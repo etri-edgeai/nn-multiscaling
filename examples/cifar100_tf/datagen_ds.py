@@ -48,6 +48,10 @@ class DataGenerator(keras.utils.Sequence):
         batch_preprocess_func=None,
         augment_args=None):
 
+        options = tf.data.Options()
+        options.threading.private_threadpool_size = 3
+        ds = ds.with_options(options)
+
         #initializing the configuration of the generator
         self._ds = ds
         self.is_batched = is_batched
@@ -148,6 +152,7 @@ class DataGenerator(keras.utils.Sequence):
     
     #return numbers of steps in an epoch using samples and batch size
     def __len__(self):
+        #return 10
         #return int(np.floor(len(self.ds) / self.batch_size))
         if self.n_examples is not None:
             return int(math.ceil(float(self.n_examples) / self.batch_size))
