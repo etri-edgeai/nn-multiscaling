@@ -1,58 +1,68 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+from bespoke import backend as B
+
 class Node(object):
     """This is a class of representing hierarchical alternatives of a model.
 
     """
 
-    def __init__(self, id_, net):
+    def __init__(self, id_, tag, net=None, pos=None, needs_finetune=True, is_original=False):
         self._net = net
-        self._children = []
-        self._parent = None
+        self._neighbors = []
         self._id = id_
         self._profile = {}
+        self._pos = pos
+        self._needs_finetune = needs_finetune
+        self._origin = None
+        self._tag = tag
+        self._is_original = is_original
 
-    def add(self, id_, net, pos=None):
-        """This function adds a child node into its children list.
+    def add(self, new, w=0.0):
+        """This function adds a neighborinto its neighbors list.
 
         """
-        if pos is None:
-            child = AlternativeNode(id_, net)
-            e = Edge(child)
-        else:
-            child = BranchingNode(id_, net)
-            e = PositionEdge(child, pos)
-        self._children.append(e)
-        child.parent = e
+        found = False
+        for n, w in self._neighbors:
+            if new.id_ == n.id_:
+                found = True
+        if not found:
+            self._neighbors.append((new, w))
 
     def remove(self, target_id):
         found = None
-        for c in self._children:
-            if c.node.id_ == target_id:
+        for c  in self._neighbors:
+            if c[0].id_ == target_id:
                 found = c
                 break
         if found is not None:
-            self._children.remove(found)
-            found.node.parent = None
+            self._neighbors.remove(found)
         else:
             raise ValueError('%s is not included in the node set.' % target_id)
+
+    def is_original(self):
+        return self._is_original
+
+    @property
+    def origin(self):
+        return self._origin
+
+    @origin.setter
+    def origin(self, origin):
+        self._origin = origin
+
+    @property
+    def tag(self):
+        return self._tag
 
     @property
     def id_(self):
         return self._id
 
     @property
-    def parent(self):
-        return self._parent
-
-    @parent.setter
-    def parent(self, e):
-        self._parent = e
-
-    @property
-    def children(self):
-        return [child for child in self._children]
+    def neighbors(self):
+        return [n for n in self._neighbors]
 
     @property
     def net(self):
@@ -63,51 +73,58 @@ class Node(object):
         raise ValueError("Not allowed to set the net.")
 
     @property
-    def net(self):
-        return self._net
+    def pos(self):
+        return self._pos
+    
+    @pos.setter
+    def pos(self, pos):
+        raise ValueError("Not allowed to set the position.")
 
     def predict(self, data):
         return self._net.predict(data)
 
-    def set_profile(self, profiler, recursive=True):
-        self._profile = profiler(self._net)
-        if recursive:
-            for child in self._children:
-                child.node.set_profile(profiler, recursive)
+    def profile(self, sample_inputs, sample_outputs):
+        self._profile = self._net.profile(sample_inputs, sample_outputs)
 
+    def load_model(self, load_dir, custom_objects=None):
+        model = B.load_model_from_node(load_dir, self.id_, custom_objects)
+        self._net.model = model
 
-class BranchingNode(Node):
+    def sleep(self):
+        self._net.sleep()
 
-    def __init__(self, id_, net):
-        super(BranchingNode, self).__init__(id_, net)
+    def wakeup(self):
+        self._net.wakeup()
 
+    def get_cmodel(self):
+        origin_model = self._origin.net.model
+        return self.net.get_cmodel(origin_model)
 
-class AlternativeNode(Node):
+    def save_model(self, save_dir):
+        return self._net.save(self.id_, save_dir)
 
-    def __init__(self, id_, net):
-        super(AlternativeNode, self).__init__(id_, net)
+    def serialize(self):
+        ret = {
+            "id":self.id_,
+            "tag":self._tag,
+            "neighbors":[(n.id_, w) for n, w in self.neighbors],
+            "pos":self._pos,
+            "profile":self._profile,
+            "origin":self._origin.id_ if self._origin is not None else "none",
+            "is_original":self.is_original(),
+            "meta":self.net.meta
+        }
+        return ret
 
-
-class Edge(object):
-    """This is a class of representing the position where an alternative is located in.
-    """
-
-    def __init__(self, node):
-        self._node = node
-
-    @property
-    def node(self):
-        return self._node
-
-
-class PositionEdge(Edge):
-    """This is a class of representing the position where an alternative is located in.
-    """
-
-    def __init__(self, node, pos):
-        super(PositionEdge, self).__init__(node)
-        self._pos = pos
-
-    @property
-    def pos(self):
-        return self._pos
+    def load(self, dict_, nodes, custom_objects=None):
+        model = B.load_model(dict_["model_path"], custom_objects)
+        self._net = B.backend_net()(model, custom_objects)
+        self._pos = [tuple(dict_["pos"][0]), tuple(dict_["pos"][1])]
+        self._profile = dict_["profile"]
+        for neighbor_id, w in dict_["neighbors"]:
+            self.add(nodes[neighbor_id], w)
+        if dict_["origin"] != "none":
+            self._origin = nodes[dict_["origin"]]
+        self._is_original = dict_["is_original"]
+        self.net.meta = dict_["meta"]
+        self._tag = dict_["tag"]

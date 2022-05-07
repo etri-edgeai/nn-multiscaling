@@ -156,12 +156,6 @@ def train(dataset, model, model_name, model_handler, epochs, callbacks=None, aug
 
     iters = len(train_data_generator)
 
-    class MyCallback(tf.keras.callbacks.Callback):
-        def on_epoch_end(self, epoch, logs=None):
-            tf.keras.backend.clear_session()
-
-    callbacks.append(MyCallback())
-
     # Prepare model model saving directory.
     if save_dir is not None:
         model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
@@ -202,3 +196,5 @@ def train(dataset, model, model_name, model_handler, epochs, callbacks=None, aug
                                         verbose=1,
                                         epochs=epochs,
                                         steps_per_epoch=iters)
+
+    del train_data_generator, valid_data_generator, test_data_generator

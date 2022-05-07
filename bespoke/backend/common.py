@@ -12,6 +12,13 @@ class Parser(ABC):
 
         """
 
+    @abstractmethod
+    def get_id(self, prefix):
+        """
+
+        """
+
+
 class Net(ABC):
 
     def __init__(self, model):
@@ -20,6 +27,10 @@ class Net(ABC):
     @property
     def model(self):
         return self._model
+
+    @model.setter
+    def model(self, model):
+        self._model = model
 
     @abstractmethod
     def predict(self, data):
@@ -31,5 +42,17 @@ class Net(ABC):
     @abstractmethod
     def input_shapes(self):
         """This function returns the shapes of inputs.
+
+        """
+    @abstractmethod
+    def save(self, name, save_dir):
+        """Save a network into a file
+
+        """
+
+    @classmethod
+    @abstractmethod
+    def load(self, filepath, custom_objects=None):
+        """Load a network from a file
 
         """
