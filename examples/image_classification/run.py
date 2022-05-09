@@ -129,7 +129,7 @@ def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None,
             try:
                 house, output_idx, output_map = mh.make_train_model(targets, scale=1.0)
                 model_handler.compile(house, run_eagerly=True, transfer=True, loss=loss, metrics=metrics)
-                train(dataset, house, "test", model_handler, num_epochs, callbacks=None, augment=True, n_classes=num_classes, sampling_ratio=sampling_ratio)
+                train(dataset, house, "test", model_handler, num_epochs, callbacks=None, augment=True, exclude_val=True, n_classes=num_classes, sampling_ratio=sampling_ratio)
 
                 del house, output_idx, output_map
                 import gc
@@ -171,7 +171,7 @@ def run():
     parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
     parser.add_argument('--model_path', type=str, default=None, help='model')
     parser.add_argument('--overwrite', action='store_true')
-    overrding_params = [
+    overriding_params = [
         ("sampling_ratio", float),
         ("memory_limit", float),
         ("params_limit", float),
@@ -179,12 +179,12 @@ def run():
         ("batch_size_limit", int),
         ("num_partitions", int),
         ("num_imported_submodels", int),
-        ("num_submodels_per_bunc", int),
+        ("num_submodels_per_bunch", int),
         ("num_samples_for_profiling", int),
         ("num_epochs", int),
         ("num_approx", int)
     ]
-    for name, type_ in overrding_params:
+    for name, type_ in overriding_params:
         parser.add_argument('--'+name, type=type_, default=None, help="method")
     args = parser.parse_args()
 
@@ -214,6 +214,9 @@ def run():
             if getattr(args, key) is not None:
                 config[key] = getattr(args, key)
                 print("%s ---> %s" % (key, str(config[key])))
+    # debug
+    for key, type_ in overriding_params:
+        assert key in config
 
     if args.target_dir is not None:
         with open(os.path.join(args.target_dir, "args.log"), "w") as file_:
@@ -258,7 +261,7 @@ def run():
             memory_limit=config["memory_limit"],
             params_limit=config["params_limit"])
         use_tl = True
-    elif args.mode == "build_approx":
+    elif args.mode == "approx":
         def f(n):
             return "app" in n.tag
         mh.build_approx(
@@ -283,6 +286,15 @@ def run():
             num_classes=config["num_classes"],
             sampling_ratio=config["sampling_ratio"]
         )
+        if args.mode == "approx":
+            train_data_generator, _, _ = load_data(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
+            sample_inputs = []
+            for x,y in train_data_generator:
+                sample_inputs.append(x)
+                if len(sample_inputs) > config["num_samples_for_profiling"]:
+                    break
+            mh.build_sample_data(sample_inputs)
+            mh.profile()
         mh.save(args.target_dir)
 
     elif args.mode == "test": # Test

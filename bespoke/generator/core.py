@@ -45,6 +45,7 @@ class PretrainedModelGenerator(Generator):
 
         ret = []
         num_try = 0
+        history = set()
         while len(ret) < num:
             ridx = random.randint(0, len(self.models)-1)
             tmodel_parser = self.models[ridx]
@@ -52,7 +53,8 @@ class PretrainedModelGenerator(Generator):
                 num=1,
                 target_shapes=(input_shape, output_shape),
                 memory_limit=memory_limit,
-                params_limit=params_limit)
+                params_limit=params_limit,
+                history=history)
             num_try += 1
             if nets is not None:
                 ret.extend([(n[0], self.models[ridx].__class__.__name__) for n in nets])
