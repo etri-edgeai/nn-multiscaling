@@ -9,7 +9,7 @@ import tensorflow_datasets as tfds
 
 from datagen_ds import DataGenerator
 
-def load_data(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100):
+def load_data(dataset, model_handler, sampling_ratio=1.0, training_augment=True, batch_size=-1, n_classes=100):
 
     dim = (224, 224)
     preprocess_func = model_handler.preprocess_func
@@ -47,7 +47,8 @@ def load_data(dataset, model_handler, training_augment=True, batch_size=-1, n_cl
         n_examples=train_examples,
         preprocess_func=preprocess_func,
         is_batched=is_batched,
-        batch_preprocess_func=batch_pf)
+        batch_preprocess_func=batch_pf,
+        sampling_ratio=sampling_ratio)
 
     valid_data_generator = DataGenerator(
         ds_val,
@@ -97,9 +98,9 @@ def train_step(X, model, output_idx, output_map, y):
     return tape, loss
 
 
-def iteration_based_train(dataset, model, model_handler, max_iters, output_idx, output_map, lr_mode=0, stopping_callback=None, augment=True, n_classes=100, eval_steps=-1, validate_func=None):
+def iteration_based_train(dataset, model, model_handler, max_iters, output_idx, output_map, sampling_ratio=1.0, lr_mode=0, stopping_callback=None, augment=True, n_classes=100, eval_steps=-1, validate_func=None):
 
-    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, training_augment=augment, n_classes=n_classes)
+    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
 
     if dataset == "imagenet":
         iters = int(math.ceil(1281167.0 / model_handler.batch_size))
@@ -147,9 +148,9 @@ def iteration_based_train(dataset, model, model_handler, max_iters, output_idx, 
 
 
 
-def train(dataset, model, model_name, model_handler, epochs, callbacks=None, augment=True, exclude_val=False, n_classes=100, save_dir=None):
+def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0, callbacks=None, augment=True, exclude_val=False, n_classes=100, save_dir=None):
 
-    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, training_augment=augment, n_classes=n_classes)
+    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
 
     if callbacks is None:   
         callbacks = []

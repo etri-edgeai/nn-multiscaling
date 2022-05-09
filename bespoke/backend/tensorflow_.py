@@ -18,8 +18,7 @@ from nncompress.backend import add_prefix
 
 from bespoke.backend import common
 from bespoke.base.topology import Node
-
-MAX_TRY = 20
+from bespoke import config
 
 def preprocess(model, namespace, custom_objects):
     model = unfold(model, custom_objects)
@@ -72,13 +71,17 @@ class TFParser(common.Parser):
         irank_b = self._trank[pos_b[0][0]]
         orank_b = self._trank[pos_b[1][0]]
 
-        if irank_a > orank_b:
+        if irank_a >= orank_b:
             return True
-        if orank_a < irank_b:
+        if orank_a <= irank_b:
             return True
         return False
 
-    def get_random_subnets(self, num=1, target_shapes=None, memory_limit=None, params_limit=None):
+    def extract(self, origin_nodes, maximal):
+        return extract(self._parser, origin_nodes, maximal, self._trank)
+
+    def get_random_subnets(
+        self, num=1, target_shapes=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32):
         nets = []
         for i in range(num):
             layers_ = []
@@ -86,14 +89,13 @@ class TFParser(common.Parser):
             target_shapes_ = None
             subnet = None
             while True:
-                if num_try > MAX_TRY:
+                if num_try > config.MAX_TRY:
                     return None
                 num_try += 1
-                #print(self._joints)
 
                 # select two positions from the joints randomly
-                left_idx = random.randint(0, len(self._joints)-5)
-                step = int(len(self._joints) * 0.2)
+                left_idx = random.randint(0, len(self._joints)-4)
+                step = int(len(self._joints) * step_ratio)
                 min_ = min(len(self._joints)-1, left_idx + step)
                 right_idx = random.randint(left_idx+1, min_)
                 left = self._trank[self._joints[left_idx]]
@@ -120,11 +122,6 @@ class TFParser(common.Parser):
                         input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1] and\
                         channel_change == target_cchange):
                         continue
-                    #else:
-                    #    print("success!")
-                    #    print(self._model.get_layer(self._rtrank[left]).name, self._model.get_layer(self._rtrank[right]).name)
-                    #    print(target_shapes)
-                    #    print(left_shape, right_shape)
 
                 layers_ = [
                     self._model.get_layer(self._rtrank[j])
@@ -138,10 +135,9 @@ class TFParser(common.Parser):
                 target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
                 subnet = self._parser.get_subnet(layers_, self._model, target_shapes_)
 
-                if memory_limit is not None:
+                if memory_limit is not None and memory_limit > 0.0:
                     shape = list(subnet[0].input.shape)
-                    # TODO 32->other number
-                    shape[0] = 32
+                    shape[0] = batch_size
                     data = np.random.rand(*shape)
                     tf.config.experimental.reset_memory_stats('GPU:0')
                     peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
@@ -150,7 +146,7 @@ class TFParser(common.Parser):
                     if memory_limit < peak2-peak1:
                         continue
                     break
-                if params_limit is not None:
+                if params_limit is not None and params_limit > 0.0:
                     if subnet[0].count_params() > params_limit:
                         continue
                 else:
@@ -227,10 +223,8 @@ class TFParser(common.Parser):
                             break
                     """
 
-                        
                     score = sorted(score, key=lambda x:x[1], reverse=True)
                     input_mask = np.zeros((subnet[0].input.shape[-1]))
-                    #print(input_mask.shape)
                     for cnt, (idx, s) in enumerate(score):
                         if cnt == target_shapes[0][-1]:
                             break
@@ -246,7 +240,6 @@ class TFParser(common.Parser):
                             lgtop = gtop
                             break
 
-                    print(lgtop)
                     score = [[i,0] for i in range(subnet[0].output.shape[-1])]
                     if lgtop is not None:
                         for key, val in lgtop.items():
@@ -258,12 +251,10 @@ class TFParser(common.Parser):
                                 w = np.abs(w)
                                 sum_ = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
                                 dim = sum_.shape[-1]
-                                #print(key, w.shape, sum_.shape, dim)
                                 for i in range(dim):
                                     for v in val:
                                         if v[0] <= i and i < v[1]:
                                             j = i - v[0]
-                                            #print(i, j, v[0], v[1], len(score), sum_.shape)
                                             score[i][1] += sum_[j]
 
                     score = sorted(score, key=lambda x:x[1], reverse=True)
@@ -288,11 +279,8 @@ class TFParser(common.Parser):
                 if output_mask is not None:
                     if lg is not None:
                         for g_ in lg:
-                            print(g_)
                             output_gate = subnet_gmodel.get_layer(gm[(g_, 0)][0]["config"]["name"])
-                            print(output_gate.name)
                             output_gate.gates.assign(output_mask)
-                            print(output_gate)
 
                 new_spatial_shape = {
                     subnet[0].input.name: input_shape
@@ -330,20 +318,6 @@ class TFParser(common.Parser):
             #return len(node_dict["layer_dict"]["inbound_nodes"]) > 0 and len(node_dict["layer_dict"]["inbound_nodes"][0]) == 1
         joints = self._parser.get_joints(filter_=f)
 
-        """
-        groups = self._parser.get_sharing_groups()
-        groups_ = []
-        r_groups = {}
-        for group in groups:
-            group_ = []
-            for layer_name in group:
-                group_.append(self._model.get_layer(layer_name))
-                r_groups[layer_name] = group_
-            groups_.append(group_)
-
-        self._groups = groups_
-        self._r_groups = r_groups
-        """
         self._joints = joints
         self._trank = trank
         self._rtrank = rtrank
@@ -416,15 +390,12 @@ class TFNet(common.Net):
         for layer in self._model.layers:
             if layer.__class__ == SimplePruningGate:
                 flag = True
-                print("xxx")
                 print(np.sum(layer.gates))
                 print(layer.ngates)
-                print("xxx")
                 break
         if not flag:
             return self.model
 
-        tf.keras.utils.plot_model(self._model, "testing.pdf", show_shapes=True)
         parser = PruningNNParser(origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
         parser.parse()
         cmodel = parser.cut(self._model)
@@ -465,7 +436,7 @@ def get_parser(model, namespace, custom_objects):
     return TFParser(model, namespace, custom_objects)
 
 
-def extract(parser, origin_nodes, nodes):
+def extract(parser, origin_nodes, nodes, trank):
 
     gmodel, gm = parser.inject(with_mapping=True, with_splits=True)
     for layer in gmodel.layers: 
@@ -502,26 +473,13 @@ def extract(parser, origin_nodes, nodes):
                 gate_name = cgm[t][0]["config"]["name"]
                 exit_gates[t] = n.net.model.get_layer(gate_name).gates.numpy()
 
-                """
-                affecting_layers = affecting[(output_[0], 0)]
-                for g in r_groups[affecting_layers[0][0]]:
-                    target_gate = gmodel.get_layer(gm[(g, 0)][0]["config"]["name"])
-                    tgates = target_gate.gates.numpy()
-                    union = (((gates + tgates) == 0.0) == False).astype(np.float32)
-                    target_gate.gates.assign(union)
-                    union_gates.add(target_gate.name)
-                """
-
-    print("here")
-    #model = parser.cut(gmodel)
-    #parser_ = PruningNNParser(model, custom_objects=parser._custom_objects) 
-    #parser_.parse()
     replacing_mappings = []
     in_maps = None
     ex_maps = []
     cmodel_map = {}
+    nodes = sorted(nodes, key=lambda x: trank[x.pos[0][0]])
     for idx, n in enumerate(nodes):
-        print(idx)
+        print(idx, n.pos)
         if n.origin is None:
             continue
         pos = n.pos
@@ -578,27 +536,41 @@ def extract(parser, origin_nodes, nodes):
             if layer.__class__ != tf.keras.layers.InputLayer:
                 target.append(layer.name)
 
-        original_input = copy.deepcopy(parser.get_layer_dict(pos[0][0]))
-        original_input["inbound_nodes"] = []
-        replacement = [original_input]
+        prev_target, prev_replacement = replacing_mappings[-1] if len(replacing_mappings) >= 1 else (None, None)
+        if prev_target is not None and pos[0][0] in prev_target: # merge
+            _input_name = prev_replacement[-1]["name"]
+            replacement = []
+        else:
+            _input = copy.deepcopy(parser.get_layer_dict(pos[0][0]))
+            _input["inbound_nodes"] = []
+            _input_name = _input["config"]["name"]
+            replacement = [_input]
+
         inputs_ = []
         for layer in json.loads(cmodel.to_json())["config"]["layers"]:
             if layer["class_name"] != "InputLayer": # remove input layer
                 replacement.append(layer)
             else:
                 inputs_.append(layer["config"]["name"])
+
         tf.keras.utils.plot_model(cmodel, "cmodel%d.pdf" % idx, show_shapes=True)
         for layer in replacement:
             for flow in layer["inbound_nodes"]:
                 for inbound in flow:
                     if inbound[0] in inputs_:
-                        inbound[0] = original_input["config"]["name"]
-        ex_map = [
-            [(pos[0][0], original_input["config"]["name"])],
-            [(pos[-1][0], replacement[-1]["name"], 0, 0)]
-        ]
-        ex_maps.append(ex_map)
-        replacing_mappings.append((target, replacement))
+                        inbound[0] = _input_name
+
+        if prev_target is None or pos[0][0] not in prev_target: # Not Merge
+            ex_map = [
+                [(pos[0][0], _input_name)],
+                [(pos[-1][0], replacement[-1]["name"], 0, 0)]
+            ]
+            ex_maps.append(ex_map)
+            replacing_mappings.append((target, replacement))
+        else:
+            prev_target += target
+            prev_replacement += replacement
+            ex_maps[-1][1][0] = (pos[-1][0], replacement[-1]["name"], 0, 0)
 
     # Conduct replace_block
     model_dict = parser.replace_block(replacing_mappings, in_maps, ex_maps, parser.custom_objects)
@@ -648,12 +620,7 @@ def extract(parser, origin_nodes, nodes):
                     target_gate.gates.assign(tgates)
     
     ret = parser_.cut(gmodel)
-
-    tf.keras.models.save_model(ret, "result.h5", overwrite=True)
-    tf.keras.utils.plot_model(ret, "ret.pdf")
-    print(ret.summary())
-    xxx
-
+    return ret
 
 def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
     outputs = []
@@ -826,9 +793,9 @@ def load_model(filepath, custom_objects=None):
                 layer.data_collecting = False
         return model
 
-def generate_pretrained_models():
-    whitelist = [
-        #tf.keras.applications.ResNet50V2,
+def generate_pretrained_models(list_=None):
+    baselist = [
+        tf.keras.applications.ResNet50V2,
         tf.keras.applications.InceptionResNetV2,
         tf.keras.applications.MobileNetV2,
         tf.keras.applications.MobileNet,
@@ -838,9 +805,16 @@ def generate_pretrained_models():
         tf.keras.applications.EfficientNetV2B1,
         tf.keras.applications.EfficientNetV2S
     ]
+    dict_ = {
+        class_.__name__:class_ for class_ in baselist
+    }
     models = []
-    for w in whitelist:
-        models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000), namespace=set()))
+    if list_ is None:
+        list_ = list(dict_.keys())
+    for name in list_:
+        if name in dict_:
+            w = dict_[name]
+            models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000), namespace=set()))
     return models
 
 def build_samples(model, data_gen, pos):

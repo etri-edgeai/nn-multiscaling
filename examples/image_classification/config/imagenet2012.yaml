@@ -1,0 +1,21 @@
+dataset: "imagenet2012"
+num_classes: 1000
+models:
+  - InceptionResNetV2
+  - MobileNetV2
+  - MobileNet
+  - EfficientNetB1
+  - EfficientNetV2B1
+  - EfficientNetV2S
+
+sampling_ratio: 0.1
+memory_limit: 205168896
+params_limit: 0
+step_ratio: 0.2 # ste
+batch_size_limit: 32 # for profiling
+num_partitions: 20
+num_imported_submodels: 20
+num_approx: 30
+num_submodels_per_bunch: 25
+num_samples_for_profiling: 30
+num_epochs: 3

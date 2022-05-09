@@ -33,36 +33,38 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, min_num=20, memory_limit=None):
+    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None):
         nodes_ = []
-        gen_ = PretrainedModelGenerator(self._namespace)
-
+        gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
+            print(len(nodes_))
             n = np.random.choice(self._nodes)
-            alters = gen_.generate(n.net, memory_limit=memory_limit)
-            for idx, a in enumerate(alters): 
-                na = Node(self._parser.get_id("anode"), "alter", a, pos=n.pos)
+            alters = gen_.generate(n.net, memory_limit=memory_limit, params_limit=params_limit)
+            for idx, (a, model_name) in enumerate(alters): 
+                na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
                 nodes_.append(na)
         self._nodes.extend(nodes_)
 
-    def build_approx(self, min_num=20, memory_limit=None):
+    def build_approx(self, min_num=20, memory_limit=None, params_limit=None):
         gen_ = PruningGenerator(self._namespace)
         nodes_ = []
         while len(nodes_) < min_num:
+            print(len(nodes_))
             n = np.random.choice(self._nodes)
             tag = "app_origin" if n.tag == "origin" else "app_alter"
             alters = gen_.generate(n.net, custom_objects=self._custom_objects)
             for idx, a in enumerate(alters):
                 nodes_.append(Node(self._parser.get_id("anode"), tag, a, pos=n.pos))
                 nodes_[-1].origin = n
-            print(tag)
         self._nodes.extend(nodes_)
 
     def select(self):
         maximal = []
 
         nodes = [n for n in self._nodes]
+        for n in nodes: 
+            print(n.pos)
         import random
         random.shuffle(nodes)
 
@@ -74,7 +76,7 @@ class ModelHouse(object):
             max_n = None
             old_len = len(maximal)
             for n in nodes:
-                if "app_alter" not in n.tag:
+                if "app" not in n.tag:
                     continue
                 compatible = True
                 for m in maximal:
@@ -97,11 +99,10 @@ class ModelHouse(object):
                 random.shuffle(maximal)
 
         for m in maximal:
-            print(m.id_)
-        B.extract(self._parser._parser, self.origin_nodes, maximal)
+            print(m.id_, m.pos)
+        ret = self._parser.extract(self.origin_nodes, maximal)
 
-
-        return maximal
+        return ret
 
     @property
     def origin_nodes(self):
@@ -152,11 +153,7 @@ class ModelHouse(object):
         for n in self._nodes:
             n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
 
-    def query(self):
-        pass
-
     def _get_predefined_paths(self, dir_):
-        
         subnet_dir_path = os.path.join(dir_, "nets")
         nodes_path = os.path.join(dir_, "nodes.json")
         namespace_path = os.path.join(dir_, "namespace.pkl")
@@ -196,9 +193,7 @@ class ModelHouse(object):
             pickle.dump(self._namespace, f)
 
     def load(self, load_dir):
-
         subnet_dir, nodes_path, namespace_path = self._get_predefined_paths(load_dir)
-
         with open(nodes_path, "r") as f:
             serialized = json.load(f)
 
