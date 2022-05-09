@@ -81,8 +81,18 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32):
+        self, num=1, target_shapes=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32, history=None):
+
+        def f(node_dict):
+            return isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.Activation) or\
+                isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.ReLU)
+
+        activations = [
+            layer.name for layer in self._parser.model.layers if layer.__class__ in [tf.keras.layers.Activation, tf.keras.layers.ReLU]
+        ]
         nets = []
+        if history is None:
+            history = set()
         for i in range(num):
             layers_ = []
             num_try = 0
@@ -90,16 +100,30 @@ class TFParser(common.Parser):
             subnet = None
             while True:
                 if num_try > config.MAX_TRY:
-                    return None
+                    break
                 num_try += 1
 
+                r = activations[random.randint(0, len(activations)-4)]
+                joints = self._parser.get_joints(filter_=f, start=r)
+
+                if len(joints) <= 1:
+                    continue
+
                 # select two positions from the joints randomly
-                left_idx = random.randint(0, len(self._joints)-4)
-                step = int(len(self._joints) * step_ratio)
-                min_ = min(len(self._joints)-1, left_idx + step)
+                left_idx = random.randint(0, len(joints)-2)
+                step = int(len(joints) * step_ratio)
+                if step == 0:
+                    min_ = len(joints)-1
+                else:
+                    min_ = min(len(joints)-1, left_idx + step)
                 right_idx = random.randint(left_idx+1, min_)
-                left = self._trank[self._joints[left_idx]]
-                right = self._trank[self._joints[right_idx]]
+
+                left = self._trank[joints[left_idx]]
+                right = self._trank[joints[right_idx]]
+
+                if (self._parser.model.name, left, right) in history:
+                    continue
+                history.add((self._parser.model.name, left, right))
 
                 if target_shapes is not None:
                     input_shape, output_shape = target_shapes
@@ -135,6 +159,9 @@ class TFParser(common.Parser):
                 target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
                 subnet = self._parser.get_subnet(layers_, self._model, target_shapes_)
 
+                if type(subnet[0].input) == list:
+                    continue
+
                 if memory_limit is not None and memory_limit > 0.0:
                     shape = list(subnet[0].input.shape)
                     shape[0] = batch_size
@@ -151,6 +178,9 @@ class TFParser(common.Parser):
                         continue
                 else:
                     break
+
+            if subnet is None:
+                continue
 
             #constraints = self._compute_constraints(layers_)
             if target_shapes is not None and (subnet[0].output.shape[-1] > target_shapes[1][-1] or subnet[0].input.shape[-1] > target_shapes[0][-1]):

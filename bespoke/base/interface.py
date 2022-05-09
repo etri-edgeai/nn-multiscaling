@@ -78,13 +78,18 @@ class ModelHouse(object):
             for n in nodes:
                 if "app" not in n.tag:
                     continue
+
+                on = n.origin
+                while on.origin != None:
+                    on = on.origin
+
                 compatible = True
                 for m in maximal:
                     if not self._parser.is_compatible(n, m):
                         compatible = False
                         break
                 if compatible:
-                    score = - n._profile["flops"] - n._profile["mse"]
+                    score = (on._profile["flops"] - n._profile["flops"]) - n._profile["mse"]
                     if max_== 0 or max_ < score:
                         max_ = score
                         max_n = n
