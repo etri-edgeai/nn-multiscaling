@@ -8,7 +8,7 @@ from tensorflow.keras.layers import Dropout, Dense, GlobalAveragePooling2D, Flat
 import numpy as np
 import cv2
 
-from loss import BespokeTaskLoss, accuracy
+from .loss import BespokeTaskLoss, accuracy
 
 height = 224
 width = 224
@@ -60,10 +60,12 @@ def get_optimizer(mode=0):
         return Adam(lr=0.00001)
 
 
-def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}):
+def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False):
     optimizer = Adam(lr=0.0001)
-    model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
-    #model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=run_eagerly)
+    if transfer:
+        model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
+    else:
+        model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=run_eagerly)
 
 def get_callbacks(nsteps=0):
     #early stopping to monitor the validation loss and avoid overfitting

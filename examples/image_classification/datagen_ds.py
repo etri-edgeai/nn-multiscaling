@@ -46,6 +46,7 @@ class DataGenerator(keras.utils.Sequence):
         is_batched=False,
         preprocess_func=None,
         batch_preprocess_func=None,
+        sampling_ratio=1.0,
         augment_args=None):
 
         options = tf.data.Options()
@@ -76,6 +77,7 @@ class DataGenerator(keras.utils.Sequence):
         self.dim = dim
         self.channels = channels
         self.n_classes = n_classes
+        self.sampling_ratio = sampling_ratio
         self.shuffle = shuffle
         self.augment = augment
         self.reg_augment = reg_augment
@@ -152,12 +154,11 @@ class DataGenerator(keras.utils.Sequence):
     
     #return numbers of steps in an epoch using samples and batch size
     def __len__(self):
-        #return 10
         #return int(np.floor(len(self.ds) / self.batch_size))
         if self.n_examples is not None:
-            return int(math.ceil(float(self.n_examples) / self.batch_size))
+            return int((math.ceil(float(self.n_examples) / self.batch_size)) * self.sampling_ratio)
         else:
-            return len(self.ds)
+            return int(len(self.ds)*self.sampling_ratio)
     
     #this method is called with the batch number as an argument to obtain a given batch of data
     def __getitem__(self, index):
