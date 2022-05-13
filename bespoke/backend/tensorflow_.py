@@ -24,6 +24,29 @@ def preprocess(model, namespace, custom_objects):
     model = unfold(model, custom_objects)
     return model, TFParser(model, namespace, custom_objects)
 
+def equivalent(a, b):
+
+    if a.__class__.__name__ == "Activation":
+        a = a.activation
+    if b.__class__.__name__ == "Activation":
+        b = b.activation
+    if a.__class__.__name__ not in ["type", "function"]:
+        a = a.__class__
+
+    a = a.__name__.lower()
+    b = b.__name__.lower()
+
+    if a == b:
+        return True
+    elif a in b:
+        return True
+    elif b in a:
+        return True
+    elif a in ["relu", "swish"] and b in ["relu", "swish"]:
+        return True
+    else:
+        return False
+
 class TFParser(common.Parser):
 
     def __init__(self, model, namespace, custom_objects=None):
@@ -77,11 +100,11 @@ class TFParser(common.Parser):
             return True
         return False
 
-    def extract(self, origin_nodes, maximal):
-        return extract(self._parser, origin_nodes, maximal, self._trank)
+    def extract(self, origin_nodes, maximal, return_gated_model=False):
+        return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32, history=None):
+        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32, history=None, use_prefix=False, use_random_walk=False):
 
         def f(node_dict):
             return isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.Activation) or\
@@ -90,6 +113,7 @@ class TFParser(common.Parser):
         activations = [
             layer.name for layer in self._parser.model.layers if layer.__class__ in [tf.keras.layers.Activation, tf.keras.layers.ReLU]
         ]
+        activations = sorted(activations, key=lambda x: self._trank[x])
         nets = []
         if history is None:
             history = set()
@@ -104,26 +128,37 @@ class TFParser(common.Parser):
                 num_try += 1
 
                 r = activations[random.randint(0, len(activations)-4)]
-                joints = self._parser.get_joints(filter_=f, start=r)
 
-                if len(joints) <= 1:
-                    continue
+                if not use_random_walk:
+                    joints = self._parser.get_joints(filter_=f, start=r)
 
-                # select two positions from the joints randomly
-                left_idx = random.randint(0, len(joints)-2)
-                step = int(len(joints) * step_ratio)
-                if step == 0:
-                    min_ = len(joints)-1
+                    if len(joints) <= 1:
+                        continue
+
+                    # select two positions from the joints randomly
+                    left_idx = random.randint(0, len(joints)-2)
+                    step = int(len(joints) * step_ratio)
+                    if step == 0:
+                        min_ = len(joints)-1
+                    else:
+                        min_ = min(len(joints)-1, left_idx + step)
+                    right_idx = random.randint(left_idx+1, min_)
+
+                    left = self._trank[joints[left_idx]]
+                    right = self._trank[joints[right_idx]]
+
                 else:
-                    min_ = min(len(joints)-1, left_idx + step)
-                right_idx = random.randint(left_idx+1, min_)
-
-                left = self._trank[joints[left_idx]]
-                right = self._trank[joints[right_idx]]
-
+                    left = self._trank[r]
+                    trail = self._parser.get_randomwalk(
+                        r, p=step_ratio, types=[tf.keras.layers.Activation, tf.keras.layers.ReLU])
+                    right = self._trank[trail[-1]]
+                    
                 if (self._parser.model.name, left, right) in history:
                     continue
                 history.add((self._parser.model.name, left, right))
+
+                if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type):
+                    continue
 
                 if target_shapes is not None:
                     input_shape, output_shape = target_shapes
@@ -158,6 +193,17 @@ class TFParser(common.Parser):
                 # Assumption: # of inputs is 1.
                 target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
                 subnet = self._parser.get_subnet(layers_, self._model, target_shapes_)
+                if use_prefix:
+                    prefix = subnet[0].name+"_"
+                    subnet_ = [None for _ in range(3)]
+                    subnet_[0] = add_prefix(subnet[0], subnet[0].name+"_", custom_objects=self._parser.custom_objects, not_change_model_name=True)
+                    subnet_[1] = [
+                        prefix+item for item in subnet[1]
+                    ]
+                    subnet_[2] = [
+                        prefix+item for item in subnet[2]
+                    ]
+                    subnet = tuple(subnet_)
 
                 if type(subnet[0].input) == list:
                     continue
@@ -466,12 +512,12 @@ def get_parser(model, namespace, custom_objects):
     return TFParser(model, namespace, custom_objects)
 
 
-def extract(parser, origin_nodes, nodes, trank):
+def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
 
-    gmodel, gm = parser.inject(with_mapping=True, with_splits=True)
-    for layer in gmodel.layers: 
-        if layer.__class__ == SimplePruningGate:
-            layer.gates.assign(np.ones((layer.ngates,)))
+    #gmodel, gm = parser.inject(with_mapping=True, with_splits=True)
+    #for layer in gmodel.layers: 
+    #    if layer.__class__ == SimplePruningGate:
+    #        layer.gates.assign(np.ones((layer.ngates,)))
 
     groups = parser.get_sharing_groups()
     r_groups = {}
@@ -514,7 +560,6 @@ def extract(parser, origin_nodes, nodes, trank):
             continue
         pos = n.pos
         input_, output_ = pos
-        target_gate = gmodel.get_layer(gm[(output_[0], 0)][0]["config"]["name"])
 
         # ones assigning
         backup = {}
@@ -631,7 +676,6 @@ def extract(parser, origin_nodes, nodes, trank):
     gmodel, gm = parser_.inject(with_splits=True, with_mapping=True)
 
     sharing_groups = parser_.get_sharing_groups()
-
     for t in exit_gates:
         gates = exit_gates[t]
         target_gate = gmodel.get_layer(gm[(t, 0)][0]["config"]["name"])
@@ -648,9 +692,12 @@ def extract(parser, origin_nodes, nodes, trank):
                 for l in g:
                     target_gate = gmodel.get_layer(gm[(l, 0)][0]["config"]["name"])
                     target_gate.gates.assign(tgates)
-    
-    ret = parser_.cut(gmodel)
-    return ret
+ 
+    if return_gated_model:
+        return gmodel, model, ex_maps
+    else:
+        ret = parser_.cut(gmodel)
+        return ret
 
 def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
     outputs = []
@@ -847,6 +894,15 @@ def generate_pretrained_models(list_=None):
             models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000), namespace=set()))
     return models
 
+def get_type(model, layer_name=None):
+    if layer_name is None:
+        return None
+    if model.get_layer(layer_name).__class__ == tf.keras.layers.Activation:
+        type_ = model.get_layer(layer_name).activation
+    else:
+        type_ = model.get_layer(layer_name).__class__
+    return type_ 
+
 def build_samples(model, data_gen, pos):
     outputs = [[],[]]
     for idx, p in enumerate(pos):
@@ -857,3 +913,40 @@ def build_samples(model, data_gen, pos):
     for data in data_gen:
         results = extractor(data)
     return results
+
+def cut(reference_model, model, custom_objects):
+    parser = PruningNNParser(reference_model, custom_objects=custom_objects, gate_class=SimplePruningGate)
+    parser.parse()
+    return parser.cut(model)
+
+def make_distiller(model, teacher, distil_loc, scale=0.1):
+
+    toutputs = []
+    for loc in distil_loc:
+        tlayer, _ = loc
+        toutputs.append(teacher.get_layer(tlayer).output)
+    toutputs.append(teacher.output)
+    new_teacher = tf.keras.Model(teacher.input, toutputs)
+    toutputs_ = new_teacher(model.input)
+
+    new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
+    tf.keras.utils.plot_model(new_model, "distill.pdf")
+
+    for idx, loc in enumerate(distil_loc):
+        tlayer, layer = loc
+        t = toutputs_[idx]
+        s = model.get_layer(layer).output
+        new_model.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
+    new_model.add_loss(tf.reduce_mean(tf.keras.losses.kl_divergence(model.output, toutputs_[-1])*scale))
+
+    for layer in teacher.layers:
+        layer.trainable = False
+
+    for layer in model.layers:
+        if layer.__class__ == SimplePruningGate:
+            layer.trainable = False
+            layer.collecting = False
+            layer.data_collecting = False
+        layer.trainable = True
+
+    return new_model

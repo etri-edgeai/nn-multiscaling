@@ -4,12 +4,10 @@ import tensorflow as tf
 import numpy as np
 import math
 
+from image_processing import _central_crop
 import tensorflow_datasets as tfds
 
 from functools import partial
-
-from image_processing import _aspect_preserving_resize, _central_crop
-
 
 def get_rand_bbox(width, height, l):
     r_x = np.random.randint(width)
@@ -19,16 +17,11 @@ def get_rand_bbox(width, height, l):
     r_h = np.int(height * r_l)
     return r_x, r_y, r_l, r_w, r_h
 
-def cub_parse_fn(example_serialized):
-
+def default_parse_fn(example_serialized):
     image = example_serialized["image"]
-    #image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-
-    image = _aspect_preserving_resize(image, 256)
+    image = tf.keras.preprocessing.image.smart_resize(image, [256, 256], interpolation='bicubic')
     image = _central_crop([image], 224, 224)[0]
-
     return {"image": image, "label":example_serialized["label"]}
-
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self,
@@ -46,17 +39,22 @@ class DataGenerator(keras.utils.Sequence):
         is_batched=False,
         preprocess_func=None,
         batch_preprocess_func=None,
+        parse_fn=None,
         sampling_ratio=1.0,
         augment_args=None):
 
+        if parse_fn is None:
+            parse_fn = default_parse_fn
+
         options = tf.data.Options()
-        options.threading.private_threadpool_size = 3
+        options.threading.private_threadpool_size = 10
         ds = ds.with_options(options)
 
         #initializing the configuration of the generator
         self._ds = ds
         self.is_batched = is_batched
         self.dataset = dataset
+        self.parse_fn = parse_fn
         if self.is_batched:
             self.ds = self._ds.shuffle(1024)
         else:
@@ -65,7 +63,7 @@ class DataGenerator(keras.utils.Sequence):
                 ds = ds.shuffle(1024)
                 ds = ds.apply(
                     tf.data.experimental.map_and_batch(
-                        map_func=cub_parse_fn,
+                        map_func=self.parse_fn,
                         batch_size=batch_size))
                 ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
                 self.ds = ds
@@ -115,7 +113,7 @@ class DataGenerator(keras.utils.Sequence):
     def on_epoch_end(self):
         self.ds_iter = iter(self.ds)
 
-        if self.mix_up_alpha > 0.0:
+        if self.reg_augment and self.mix_up_alpha > 0.0:
             if not hasattr(self, "ds_mix"):
                 if self.is_batched:
                     self.ds_mix = self._ds.shuffle(1024)
@@ -125,7 +123,7 @@ class DataGenerator(keras.utils.Sequence):
                         ds = self._ds.shuffle(1024)
                         ds = ds.apply(
                             tf.data.experimental.map_and_batch(
-                                map_func=cub_parse_fn,
+                                map_func=self.parse_fn,
                                 batch_size=self.batch_size))
                         ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
                         self.ds_mix = ds
@@ -134,7 +132,7 @@ class DataGenerator(keras.utils.Sequence):
 
             self.mix_iter = iter(self.ds_mix)
 
-        if self.cutmix_alpha > 0.0:
+        if self.reg_augment and self.cutmix_alpha > 0.0:
             if not hasattr(self, "ds_cut"):
                 if self.is_batched:
                     self.ds_cut = self._ds.shuffle(1024)
@@ -144,7 +142,7 @@ class DataGenerator(keras.utils.Sequence):
                         ds = self._ds.shuffle(1024)
                         ds = ds.apply(
                             tf.data.experimental.map_and_batch(
-                                map_func=cub_parse_fn,
+                                map_func=self.parse_fn,
                                 batch_size=self.batch_size))
                         ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
                         self.ds_cut= ds

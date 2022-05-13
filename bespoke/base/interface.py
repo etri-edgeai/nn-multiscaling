@@ -37,9 +37,8 @@ class ModelHouse(object):
         nodes_ = []
         gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
-            print(len(nodes_))
             n = np.random.choice(self._nodes)
-            alters = gen_.generate(n.net, memory_limit=memory_limit, params_limit=params_limit)
+            alters = gen_.generate(n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
@@ -53,13 +52,14 @@ class ModelHouse(object):
             print(len(nodes_))
             n = np.random.choice(self._nodes)
             tag = "app_origin" if n.tag == "origin" else "app_alter"
-            alters = gen_.generate(n.net, custom_objects=self._custom_objects)
+            scale = np.random.choice([0.125, 0.25, 0.375, 0.5, 0.625, 0.75])
+            alters = gen_.generate(n.net, [scale], custom_objects=self._custom_objects)
             for idx, a in enumerate(alters):
                 nodes_.append(Node(self._parser.get_id("anode"), tag, a, pos=n.pos))
                 nodes_[-1].origin = n
         self._nodes.extend(nodes_)
 
-    def select(self):
+    def select(self, return_gated_model=False):
         maximal = []
 
         nodes = [n for n in self._nodes]
@@ -76,8 +76,8 @@ class ModelHouse(object):
             max_n = None
             old_len = len(maximal)
             for n in nodes:
-                if "app" not in n.tag:
-                    continue
+                #if "app" not in n.tag:
+                #    continue
 
                 on = n.origin
                 while on.origin != None:
@@ -105,7 +105,7 @@ class ModelHouse(object):
 
         for m in maximal:
             print(m.id_, m.pos)
-        ret = self._parser.extract(self.origin_nodes, maximal)
+        ret = self._parser.extract(self.origin_nodes, maximal, return_gated_model=return_gated_model)
 
         return ret
 

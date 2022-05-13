@@ -38,7 +38,7 @@ class PretrainedModelGenerator(Generator):
         for m in self.models:
             m.build()
 
-    def generate(self, net, num=5, memory_limit=None, params_limit=None):
+    def generate(self, net, last=None, num=1, memory_limit=None, params_limit=None):
         # TODO: single input shape
         input_shape = net.input_shapes[0]
         output_shape = net.output_shapes[0]
@@ -52,9 +52,12 @@ class PretrainedModelGenerator(Generator):
             nets = tmodel_parser.get_random_subnets(
                 num=1,
                 target_shapes=(input_shape, output_shape),
+                target_type=B.get_type(net.model, last),
                 memory_limit=memory_limit,
                 params_limit=params_limit,
-                history=history)
+                history=history,
+                use_prefix=True,
+                use_random_walk=True)
             num_try += 1
             if nets is not None:
                 ret.extend([(n[0], self.models[ridx].__class__.__name__) for n in nets])

@@ -9,6 +9,7 @@ models:
   - EfficientNetV2S
 
 sampling_ratio: 0.1
+dloss_scale: 0.5
 memory_limit: 205168896
 params_limit: 0
 step_ratio: 0.2 # ste

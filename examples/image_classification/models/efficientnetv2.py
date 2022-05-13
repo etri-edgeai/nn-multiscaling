@@ -10,32 +10,10 @@ import cv2
 
 from .loss import BespokeTaskLoss, accuracy
 
-USE_EFNET = True
-if USE_EFNET:
-    from efficientnet.tfkeras import EfficientNetB0
-    from efficientnet.tfkeras import preprocess_input
-else:
-    from tensorflow.keras.applications.efficientnet import EfficientNetB0, preprocess_input
-
 height = 224
 width = 224
 input_shape = (height, width, 3) # network input
 batch_size = 32
-
-def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
-    shape = tf.shape(image)
-    h = shape[0]
-    w = shape[1]
-
-    padded_center_crop_size = tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
-    offset_height = ((h - padded_center_crop_size) + 1) // 2
-    offset_width = ((w - padded_center_crop_size) + 1) // 2
-
-    image_crop = image[offset_height:padded_center_crop_size + offset_height,
-                       offset_width:padded_center_crop_size + offset_width]
-
-    resized_image = tf.keras.preprocessing.image.smart_resize(image, [image_size, image_size], interpolation=interpolation)
-    return resized_image
 
 def get_shape(dataset):
     return (height, width, 3) # network input
@@ -44,23 +22,26 @@ def get_batch_size(dataset):
     return batch_size
 
 def get_name():
-    return "efnet"
+    return "efnetv2b0"
 
 def preprocess_func(img, shape):
-    img = preprocess_input(img)
+    img = tf.keras.applications.efficientnet_v2.preprocess_input(img)
     return img
 
 def parse_fn(example_serialized):
     image = example_serialized["image"]
-    image = center_crop_and_resize(image, width)
+    resized_image = tf.keras.preprocessing.image.smart_resize(image, [256, 256], interpolation='bicubic')
+    image = _central_crop([image], 224, 224)[0]
     return {"image": image, "label":example_serialized["label"]}
 
 def get_model(dataset, n_classes=100):
     if dataset == "imagenet2012":
-        model = EfficientNetB0(weights='imagenet')
+        model = tf.keras.applications.efficientnet_v2.EfficientNetB0(
+            include_top=True, weights='imagenet', input_tensor=None, input_shape=input_shape, pooling=None, classes=1000,
+            classifier_activation='softmax')
         return model
     else:
-        efnb0 = EfficientNetB0(
+        efnb0 = tf.keras.applications.efficientnet_v2.EfficientNetB0(
             include_top=False, weights='imagenet', input_shape=input_shape, classes=n_classes)
 
         model = Sequential()
