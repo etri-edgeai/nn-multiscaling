@@ -8,15 +8,21 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 from datagen_ds import DataGenerator
+from dataloader import dataset_factory
 
 def load_data(dataset, model_handler, sampling_ratio=1.0, training_augment=True, batch_size=-1, n_classes=100):
 
-    dim = (224, 224)
+    dim = (model_handler.height, model_handler.width)
     preprocess_func = model_handler.preprocess_func
     if hasattr(model_handler, "batch_preprocess_func"):
         batch_pf = model_handler.batch_preprocess_func
     else:
         batch_pf = None
+
+    if hasattr(model_handler, "parse_fn"):
+        parse_fn = model_handler.parse_fn
+    else:
+        parse_fn = None
 
     if batch_size == -1:
         batch_size_ = model_handler.get_batch_size(dataset)
@@ -48,6 +54,7 @@ def load_data(dataset, model_handler, sampling_ratio=1.0, training_augment=True,
         preprocess_func=preprocess_func,
         is_batched=is_batched,
         batch_preprocess_func=batch_pf,
+        parse_fn=parse_fn,
         sampling_ratio=sampling_ratio)
 
     valid_data_generator = DataGenerator(
@@ -56,11 +63,13 @@ def load_data(dataset, model_handler, sampling_ratio=1.0, training_augment=True,
         batch_size=batch_size_,
         augment=False,
         dim=dim,
+        shuffle=False,
         n_classes=n_classes,
         n_examples=val_examples,
         preprocess_func=preprocess_func,
         is_batched=is_batched,
-        batch_preprocess_func=batch_pf)
+        batch_preprocess_func=batch_pf,
+        parse_fn=parse_fn)
 
     test_data_generator = DataGenerator(
         ds_val,
@@ -68,94 +77,83 @@ def load_data(dataset, model_handler, sampling_ratio=1.0, training_augment=True,
         batch_size=batch_size_,
         augment=False,
         dim=dim,
+        shuffle=False,
         n_classes=n_classes,
         n_examples=val_examples,
         preprocess_func=preprocess_func,
         is_batched=is_batched,
-        batch_preprocess_func=batch_pf)
+        batch_preprocess_func=batch_pf,
+        parse_fn=parse_fn)
 
     return train_data_generator, valid_data_generator, test_data_generator
 
+def load_data_dali(dataset, model_handler, sampling_ratio=1.0, training_augment=True, batch_size=-1, n_classes=100):
 
-def train_step(X, model, output_idx, output_map, y):
-    with tf.GradientTape() as tape:
-        logits = model(X)
-        if type(logits) != list:
-            logits = [logits]
+    builders = []
+    validation_dataset_builder = None
+    train_dataset_builder = None
 
-        loss = tf.math.reduce_mean(tf.keras.losses.categorical_crossentropy(logits[0], y))
-        if len(output_map) > 0:
-            temp = None
-            for tname, sname in output_map: # exclude the model's ouptut logit.
-                t = logits[output_idx[tname]]
-                s = logits[output_idx[sname]]
-                if temp is None:
-                    temp = tf.math.reduce_mean(tf.keras.losses.mean_squared_error(t, s))
-                else:
-                    temp += tf.math.reduce_mean(tf.keras.losses.mean_squared_error(t, s))
-            temp /= len(output_map)
-        loss += temp
-    return tape, loss
+    mode = "train_eval" 
+    if "train" in mode:
+        img_size = 224
+        print("Image size {} used for training".format(img_size))
+        print("Train batch size {}".format(32))
+        train_dataset_builder = dataset_factory.Dataset(data_dir="/ssd_data/tensorflow_datasets_/imagenet2012/5.1.0_dali",
+        index_file_dir="/ssd_data/tensorflow_datasets_/imagenet2012/5.1.0_dali_index",
+        split='train',
+        num_classes=n_classes,
+        image_size=img_size,
+        batch_size=32,
+        one_hot=True,
+        use_dali=True,
+        augmenter=None,
+        #augmenter_params=build_augmenter_params(params.augmenter_name, 
+        #    params.cutout_const, 
+        #    params.translate_const, 
+        #    params.raug_num_layers, 
+        #    params.raug_magnitude, 
+        #    params.autoaugmentation_name),
+        mixup_alpha=0.5,
+        cutmix_alpha=0.5,
+        defer_img_mixing=True,
+        mean_subtract=False,
+        standardize=False,
+        hvd_size=None,
+        disable_map_parallelization=False
+        )
+    if "eval" in mode:
+        img_size = 224
+        print("Image size {} used for evaluation".format(img_size))
+        validation_dataset_builder = dataset_factory.Dataset(data_dir="/ssd_data/tensorflow_datasets_/imagenet2012/5.1.0_dali",
+        index_file_dir="/ssd_data/tensorflow_datasets_/imagenet2012/5.1.0_dali_index",
+        split='validation',
+        num_classes=n_classes,
+        image_size=img_size,
+        batch_size=32,
+        one_hot=False,
+        use_dali=True,
+        hvd_size=None)
+
+    builders.append(train_dataset_builder)
+    builders.append(validation_dataset_builder)
+    datasets = [builder.build() if builder else None for builder in builders]
+    return datasets
 
 
-def iteration_based_train(dataset, model, model_handler, max_iters, output_idx, output_map, sampling_ratio=1.0, lr_mode=0, stopping_callback=None, augment=True, n_classes=100, eval_steps=-1, validate_func=None):
+def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0, callbacks=None, augment=True, exclude_val=False, n_classes=100, save_dir=None, use_dali=False):
 
-    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
-
-    if dataset == "imagenet":
-        iters = int(math.ceil(1281167.0 / model_handler.batch_size))
+    if use_dali:
+        assert dataset == "imagenet2012"
+        train_data_generator, valid_data_generator = load_data_dali(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
+        iters = 40023
+        iters_val = 1000
     else:
+        train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
         iters = len(train_data_generator)
-
-    global_step = 0
-    #callbacks_ = model_handler.get_callbacks(iters)
-    optimizer = model_handler.get_optimizer(lr_mode)
-
-    epoch = 0
-    with tqdm(total=max_iters, ncols=120) as pbar:
-        while global_step < max_iters: 
-            # start with new epoch.
-            done = False
-            idx = 0
-            for X, y in train_data_generator:
-                idx += 1
-                y = tf.convert_to_tensor(y, dtype=tf.float32)
-
-                tape, loss = train_step(X, model, output_idx, output_map, y)
-                gradients = tape.gradient(loss, model.trainable_variables)
-                optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-
-                global_step += 1
-                pbar.update(1)
-                #print(" / ", tf.config.experimental.get_memory_info('GPU:0'))
-
-                if eval_steps != -1 and global_step % eval_steps == 0 and validate_func is not None:
-                    val = validate_func()
-                    print("Global Steps %d: %f" % (global_step, val))
-                    logging.info("Global Steps %d: %f" % (global_step, val))
-
-                if stopping_callback is not None and stopping_callback(idx, global_step):
-                    done = True
-                    break
-            if done:
-                break
-            else:
-                train_data_generator.on_epoch_end()
-
-            #epoch += 1
-            #if validate_func is not None:
-            #    print("Epoch %d: %f" % (epoch, validate_func()))
-
-
-
-def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0, callbacks=None, augment=True, exclude_val=False, n_classes=100, save_dir=None):
-
-    train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
+        iters_val = len(valid_data_generator)
 
     if callbacks is None:   
         callbacks = []
-
-    iters = len(train_data_generator)
 
     # Prepare model model saving directory.
     if save_dir is not None:
@@ -174,15 +172,6 @@ def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0,
             save_freq="epoch",
             options=None,
         )
-        #callbacks.append(mchk)
-
-    """
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(
-        log_dir = "logs",
-        histogram_freq = 1
-    )
-    callbacks.append(tensorboard_callback)
-    """
 
     if exclude_val:
         model_history = model.fit(train_data_generator,
@@ -196,6 +185,7 @@ def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0,
                                         callbacks=callbacks,
                                         verbose=1,
                                         epochs=epochs,
-                                        steps_per_epoch=iters)
+                                        steps_per_epoch=iters,
+                                        validation_steps=iters_val)
 
     del train_data_generator, valid_data_generator, test_data_generator
