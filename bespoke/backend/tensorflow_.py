@@ -20,6 +20,16 @@ from bespoke.backend import common
 from bespoke.base.topology import Node
 from bespoke import config
 
+STOP_POINTS = [
+    tf.keras.layers.Activation,
+    tf.keras.layers.ReLU,
+    tf.keras.layers.BatchNormalization,
+    tf.keras.layers.Add,
+    tf.keras.layers.Concatenate,
+    tf.keras.layers.Dropout,
+    tf.keras.layers.Multiply
+]
+
 def preprocess(model, namespace, custom_objects):
     model = unfold(model, custom_objects)
     return model, TFParser(model, namespace, custom_objects)
@@ -32,6 +42,8 @@ def equivalent(a, b):
         b = b.activation
     if a.__class__.__name__ not in ["type", "function"]:
         a = a.__class__
+    if b.__class__.__name__ not in ["type", "function"]:
+        b = b.__class__
 
     a = a.__name__.lower()
     b = b.__name__.lower()
@@ -80,7 +92,7 @@ class TFParser(common.Parser):
     def _is_compressible(self, layers):
         compressible = False
         for layer in layers:
-            if layer.__class__.__name__ in ["Conv2D", "Dense", "DepthwiseConv2D"]:
+            if layer.__class__.__name__ in ["Conv2D", "Dense"]:
                 compressible = True
                 break
         return compressible
@@ -104,16 +116,15 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.2, batch_size=32, history=None, use_prefix=False, use_random_walk=False):
+        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False):
 
         def f(node_dict):
-            return isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.Activation) or\
-                isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.ReLU)
+            return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
 
-        activations = [
-            layer.name for layer in self._parser.model.layers if layer.__class__ in [tf.keras.layers.Activation, tf.keras.layers.ReLU]
+        stops = [
+            layer.name for layer in self._parser.model.layers if layer.__class__ in STOP_POINTS
         ]
-        activations = sorted(activations, key=lambda x: self._trank[x])
+        stops = sorted(stops, key=lambda x: self._trank[x])
         nets = []
         if history is None:
             history = set()
@@ -127,7 +138,15 @@ class TFParser(common.Parser):
                     break
                 num_try += 1
 
-                r = activations[random.randint(0, len(activations)-4)]
+                r = stops[random.randint(0, len(stops)-5)]
+                left = self._trank[r]
+                if target_shapes is not None:
+                    input_shape, output_shape = target_shapes
+                    if type(self._model.get_layer(self._rtrank[left]).input) == list:
+                        continue
+                    left_shape = self._model.get_layer(self._rtrank[left]).input.shape
+                    if not input_shape[-1] <= left_shape[-1]:
+                        continue
 
                 if not use_random_walk:
                     joints = self._parser.get_joints(filter_=f, start=r)
@@ -136,22 +155,35 @@ class TFParser(common.Parser):
                         continue
 
                     # select two positions from the joints randomly
-                    left_idx = random.randint(0, len(joints)-2)
+                    #left_idx = random.randint(0, len(joints)-2)
                     step = int(len(joints) * step_ratio)
                     if step == 0:
                         min_ = len(joints)-1
                     else:
-                        min_ = min(len(joints)-1, left_idx + step)
-                    right_idx = random.randint(left_idx+1, min_)
+                        min_ = min(len(joints)-1, step)
 
-                    left = self._trank[joints[left_idx]]
+                    right_idx = random.randint(1, min_)
                     right = self._trank[joints[right_idx]]
 
                 else:
-                    left = self._trank[r]
                     trail = self._parser.get_randomwalk(
-                        r, p=step_ratio, types=[tf.keras.layers.Activation, tf.keras.layers.ReLU])
-                    right = self._trank[trail[-1]]
+                        r, p=1.0, types=STOP_POINTS)
+                    atrail = [
+                        t
+                        for t in trail if self._parser.model.get_layer(t).__class__ in STOP_POINTS
+                    ]
+
+                    if len(atrail) <= 1:
+                        continue
+
+                    step = int(len(atrail) * step_ratio)
+                    if step == 0:
+                        min_ = len(atrail)-1
+                    else:
+                        min_ = min(len(atrail)-1, step) # left_idx = 0
+
+                    right_idx = random.randint(1, min_)
+                    right = self._trank[atrail[right_idx]]
                     
                 if (self._parser.model.name, left, right) in history:
                     continue
@@ -214,7 +246,11 @@ class TFParser(common.Parser):
                     data = np.random.rand(*shape)
                     tf.config.experimental.reset_memory_stats('GPU:0')
                     peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
-                    subnet[0](data)
+                    try:
+                        subnet[0](data)
+                    except Exception as e:
+                        print("Extremely large!")
+                        continue
                     peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
                     if memory_limit < peak2-peak1:
                         continue
@@ -389,8 +425,7 @@ class TFParser(common.Parser):
             for name, idx in trank.items()
         }
         def f(node_dict):
-            return isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.Activation) or\
-                isinstance(self._model.get_layer(node_dict["layer_dict"]["name"]), tf.keras.layers.ReLU)
+            return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
             #return len(node_dict["layer_dict"]["inbound_nodes"]) > 0 and len(node_dict["layer_dict"]["inbound_nodes"][0]) == 1
         joints = self._parser.get_joints(filter_=f)
 
@@ -442,11 +477,18 @@ class TFNet(common.Net):
         tf.keras.models.save_model(self._model, filepath, overwrite=True)
         return filepath
 
-    def profile(self, sample_inputs, sample_outputs):
-        return {
-            "flops": self.get_flops(),
-            "mse": float(self.get_mse(sample_inputs, sample_outputs).numpy())
-        }
+    def profile(self, sample_inputs, sample_outputs, cmodel=None):
+        
+        if cmodel is not None:
+            return {
+                "flops": get_flops(cmodel, batch_size=1),
+                "mse": float(self.get_mse(sample_inputs, sample_outputs).numpy())
+            }
+        else:
+            return {
+                "flops": self.get_flops(),
+                "mse": float(self.get_mse(sample_inputs, sample_outputs).numpy())
+            }
 
     def get_flops(self):
         if self.is_sleeping():
@@ -553,6 +595,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
     in_maps = None
     ex_maps = []
     cmodel_map = {}
+    pos_backup = [] # for debugging
     nodes = sorted(nodes, key=lambda x: trank[x.pos[0][0]])
     for idx, n in enumerate(nodes):
         print(idx, n.pos)
@@ -588,6 +631,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         
         cmodel = n.get_cmodel()
         cmodel_map[n.id_] = cmodel
+        print(cmodel.count_params(), n.net.model.count_params())
 
         # restore
         for t in last:
@@ -611,8 +655,14 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             if layer.__class__ != tf.keras.layers.InputLayer:
                 target.append(layer.name)
 
-        prev_target, prev_replacement = replacing_mappings[-1] if len(replacing_mappings) >= 1 else (None, None)
-        if prev_target is not None and pos[0][0] in prev_target: # merge
+        prev_target = None
+        prev_replacement = None
+        for target_, replacement_ in replacing_mappings:
+            if pos[0][0] in target_:
+                prev_target = target_
+                prev_replacement = replacement_
+                break
+        if prev_target is not None:
             _input_name = prev_replacement[-1]["name"]
             replacement = []
         else:
@@ -642,15 +692,30 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             ]
             ex_maps.append(ex_map)
             replacing_mappings.append((target, replacement))
+            pos_backup.append(pos)
         else:
-            prev_target += target
+            for t in target:
+                if t not in prev_target:
+                    prev_target.append(t)
             prev_replacement += replacement
-            ex_maps[-1][1][0] = (pos[-1][0], replacement[-1]["name"], 0, 0)
+            ex_maps[-1][1].append((pos[-1][0], replacement[-1]["name"], 0, 0))
 
     # Conduct replace_block
     model_dict = parser.replace_block(replacing_mappings, in_maps, ex_maps, parser.custom_objects)
     model_json = json.dumps(model_dict) 
-    model = tf.keras.models.model_from_json(model_json, custom_objects=parser.custom_objects)
+    try:
+        model = tf.keras.models.model_from_json(model_json, custom_objects=parser.custom_objects)
+    except Exception as e:
+        for ex_map, (target, replacement), pos in zip(ex_maps, replacing_mappings, pos_backup):
+            print(ex_map)
+            print(target)
+            print(replacement)
+            print(pos)
+            print("---")
+        tf.keras.utils.plot_model(parser.model, "error.pdf", show_shapes=True)
+        import sys, traceback
+        traceback.print_exc(file=sys.stdout)
+        sys.exit()
 
     not_det = set()
     layer_names = [ layer.name for layer in model.layers ]
@@ -675,6 +740,10 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
     parser_.parse()
     gmodel, gm = parser_.inject(with_splits=True, with_mapping=True)
 
+    for layer in gmodel.layers:
+        if layer.__class__ == SimplePruningGate:
+            layer.gates.assign(np.zeros((layer.ngates,)))
+
     sharing_groups = parser_.get_sharing_groups()
     for t in exit_gates:
         gates = exit_gates[t]
@@ -692,7 +761,12 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                 for l in g:
                     target_gate = gmodel.get_layer(gm[(l, 0)][0]["config"]["name"])
                     target_gate.gates.assign(tgates)
- 
+
+    for layer in gmodel.layers:
+        if layer.__class__ == SimplePruningGate:
+            if np.sum(layer.gates.numpy()) == 0:
+                layer.gates.assign(np.ones((layer.ngates,)))
+
     if return_gated_model:
         return gmodel, model, ex_maps
     else:
@@ -725,9 +799,11 @@ def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
             out_ = n.net.model(t_inputs[0])
 
         for l in n.net.model.layers:
+            l.trainable = True
             if l.__class__ == SimplePruningGate:
                 l.collecting = False
                 l.data_collecting = False
+                #l.trainable = False
 
         if type(out_) != list:
             t_out = t_outputs[0]
@@ -820,7 +896,10 @@ def prune(net, scale, namespace, custom_objects=None):
                     mask[v[0]:v[1]] += w
 
         sorted_ = np.sort(mask, axis=None)
-        val = sorted_[int((len(sorted_)-1)*scale)]
+        remained = max(int((len(sorted_)-1)*scale), 5)
+        if remained >= len(mask):
+            remained = len(mask)-1
+        val = sorted_[remained]
         mask = (mask >= val).astype(np.float32)
 
         # Distribute
@@ -838,6 +917,7 @@ def prune(net, scale, namespace, custom_objects=None):
 
     # test
     cutmodel = parser.cut(gated_model)
+    del cutmodel
 
     net = TFNet(gated_model, custom_objects=parser.custom_objects)
     gate_mapping = {}
@@ -868,6 +948,7 @@ def load_model(filepath, custom_objects=None):
             if layer.__class__ == SimplePruningGate:
                 layer.collecting = False
                 layer.data_collecting = False
+                #layer.trainable = False
         return model
 
 def generate_pretrained_models(list_=None):
@@ -914,7 +995,7 @@ def build_samples(model, data_gen, pos):
         results = extractor(data)
     return results
 
-def cut(reference_model, model, custom_objects):
+def cut(model, reference_model, custom_objects):
     parser = PruningNNParser(reference_model, custom_objects=custom_objects, gate_class=SimplePruningGate)
     parser.parse()
     return parser.cut(model)
@@ -943,10 +1024,10 @@ def make_distiller(model, teacher, distil_loc, scale=0.1):
         layer.trainable = False
 
     for layer in model.layers:
+        layer.trainable = True
         if layer.__class__ == SimplePruningGate:
-            layer.trainable = False
+            #layer.trainable = False
             layer.collecting = False
             layer.data_collecting = False
-        layer.trainable = True
 
     return new_model
