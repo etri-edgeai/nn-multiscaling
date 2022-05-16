@@ -4,12 +4,66 @@ from __future__ import print_function
 import json
 import pickle
 import os
+import copy
 
 import numpy as np
 
 from bespoke import backend as B
 from bespoke.base.topology import Node
 from bespoke.generator import *
+
+from nncompress.algorithms.solver.solver import State
+from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingSolver
+
+class ModelState(State):
+
+    def __init__(self, selected_nodes, nodes, parser):
+        self.selected_nodes = selected_nodes
+        self.nodes = nodes
+        self.parser = parser
+            
+    def get_next_impl(self):
+        c = copy.copy(self.selected_nodes)
+        random.shuffle(c)
+        c.pop()
+
+        while True:
+            comple = []
+            for n in self.nodes:
+                compatible = True
+                for c_ in c:
+                    if not self.parser.is_compatible(n, c_):
+                        compatible = False
+                        break
+                if compatible:
+                    comple.append(n)
+
+            if len(comple) == 0:
+                break
+            else:
+                n = np.random.choice(comple)
+                c.append(n)
+           
+        return ModelState(c, self.nodes, self.parser)
+
+
+def score_f(obj_value, base_value, metric, nodes):
+    approx_value = base_value
+    score = None
+    sum_mse = 0
+    for n in nodes:
+        on = n.origin
+        if on is not None:
+            while on.origin != None:
+                on = on.origin
+        if on is not None:
+            approx_value = approx_value - on._profile[metric] + n._profile[metric]
+        sum_mse += n._profile["mse"]
+
+    score = max(approx_value / obj_value, 1.0) + sum_mse * 0.01
+    print(approx_value, obj_value, sum_mse, score)
+    return -1 * score
+
 
 class ModelHouse(object):
     """This is a class of housing a model for model scaling.
@@ -39,7 +93,8 @@ class ModelHouse(object):
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)
-            alters = gen_.generate(n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit)
+            alters = gen_.generate(
+                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
@@ -61,78 +116,60 @@ class ModelHouse(object):
                 nodes_[-1].origin = n
         self._nodes.extend(nodes_)
 
-    def select(self, return_gated_model=False):
-        maximal = []
-
+    def select(self, spec, return_gated_model=False):
+        minimal = []
         nodes = [n for n in self._nodes]
-        for n in nodes: 
-            print(n.pos)
         import random
         random.shuffle(nodes)
 
-        num_iters = 20
+        num_iters = 100
         iter_ = 0
+        metric, obj_value, base_value = spec
+        approx_value = base_value
         while True:
-            print(iter_)
-            max_ = 0
-            max_n = None
-            old_len = len(maximal)
-
-            sum1 = 0
-            cnt1 = 0
-            sum2 = 0
-            cnt2 = 0
+            min_ = -1
+            min_n = None
+            old_len = len(minimal)
             for n in nodes:
-                #if "app" not in n.tag:
-                #    continue
-
                 on = n.origin
                 if on is not None:
                     while on.origin != None:
                         on = on.origin
 
                 compatible = True
-                for m in maximal:
+                for m in minimal:
                     if not self._parser.is_compatible(n, m):
                         compatible = False
                         break
                 if compatible:
                     if on is None:
-                        score = 1.0 - n._profile["mse"] * 0.5
+                        score = max(approx_value / obj_value, 1.0) + n._profile["mse"] * 0.0
                     else:
-                        score = (on._profile["flops"] / n._profile["flops"]) - n._profile["mse"] * 0.5
-                    if max_== 0 or max_ < score:
-                        max_ = score
-                        max_n = n
+                        score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * 0.0
 
-                    if "app" in n.tag:
-                        sum2 += score
-                        cnt2 += 1
-                    else:
-                        sum1 += score
-                        cnt1 += 1
+                    if min_== -1 or min_ > score:
+                        min_ = score
+                        min_n = n
 
-            if cnt1 > 0:
-                print("sum1:", float(sum1)/cnt1)
-            
-            if cnt2 > 0:
-                print("sum2:", float(sum2)/cnt2)
+            if min_n is not None and min_n not in minimal:
+                minimal.append(min_n)
+                approx_value -= on._profile[metric] - n._profile[metric]
 
-            if max_n is not None and max_n not in maximal:
-                print(max_n.id_, max_)
-                maximal.append(max_n)
-
-            print(old_len, len(maximal))
-            if old_len == len(maximal) and iter_ >= num_iters: # not changed
+            if old_len == len(minimal) or iter_ >= num_iters: # not changed
                 break
             else:
                 iter_ += 1
-                random.shuffle(maximal)
 
-        for m in maximal:
+        score_func = lambda state: score_f(obj_value, base_value, metric, state.selected_nodes)
+        sa = SimulatedAnnealingSolver(score_func, max_niters=10000)
+        init_state = ModelState(minimal, self._nodes, self._parser)
+        last, best_score = sa.solve(init_state)
+        minimal = last.selected_nodes
+
+        for m in minimal:
             print(m.id_, m.pos)
-        ret = self._parser.extract(self.origin_nodes, maximal, return_gated_model=return_gated_model)
 
+        ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
         return ret
 
     @property

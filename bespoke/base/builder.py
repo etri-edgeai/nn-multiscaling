@@ -24,3 +24,4 @@ class RandomHouseBuilder(HouseBuilder):
         for net, input_, output_ in nets:
             n = Node(self._model_house._parser.get_id("node"), "origin", net, pos=(tuple(input_), tuple(output_)), is_original=True)
             self._model_house.add(n)
+            n.sleep()
