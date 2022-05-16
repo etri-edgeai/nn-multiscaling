@@ -1,4 +1,6 @@
 from __future__ import print_function
+from silence_tensorflow import silence_tensorflow
+silence_tensorflow()
 
 import json
 import os
@@ -11,15 +13,19 @@ import time
 
 import tensorflow as tf
 physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(
-    physical_devices[0], True
-    )
+if len(physical_devices) > 0:
+    tf.config.experimental.set_memory_growth(
+        physical_devices[0], True
+        )
 tf.random.set_seed(2)
 import random
 random.seed(1234)
 import numpy as np
 np.random.seed(1234)
 import yaml
+
+#from tensorflow.keras import mixed_precision
+#mixed_precision.set_global_policy('mixed_float16')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -37,7 +43,7 @@ from bespoke import backend as B
 from models.loss import BespokeTaskLoss, accuracy
 from train import train, load_data
 
-from efficientnet.tfkeras import EfficientNetB0
+from efficientnet.tfkeras import EfficientNetB0, EfficientNetB2
 
 
 MODELS = [
@@ -50,7 +56,8 @@ MODELS = [
     #tf.keras.applications.EfficientNetB0,
     EfficientNetB0,
     tf.keras.applications.EfficientNetB1,
-    tf.keras.applications.EfficientNetB2,
+    EfficientNetB2,
+    #tf.keras.applications.EfficientNetB2,
     tf.keras.applications.EfficientNetB6,
     tf.keras.applications.EfficientNetV2B0,
     tf.keras.applications.EfficientNetV2B1,
@@ -60,6 +67,8 @@ MODELS = [
 def get_handler(model_name):
     if model_name == "efnetb0":
         from models import efficientnet as model_handler
+    elif model_name == "efnetb2":
+        from models import efficientnet2 as model_handler
     elif model_name == "efnetv2b0":
         from models import efficientnetv2 as model_handler
     elif model_name == "resnet50":
@@ -204,6 +213,9 @@ def run():
     parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
     parser.add_argument('--model_path', type=str, default=None, help='model')
     parser.add_argument('--postfix', type=str, default="", help='model')
+    parser.add_argument('--base_value', type=float, default=0, help='model')
+    parser.add_argument('--obj_ratio', type=float, default=0.5, help='model')
+    parser.add_argument('--metric', type=str, default="flops", help='model')
     parser.add_argument('--teacher_path', type=str, default=None, help='model')
     parser.add_argument('--overwrite', action='store_true')
     parser.add_argument('--init', action='store_true')
@@ -496,7 +508,12 @@ def run():
         query_time_t1 = time.time()
         for n in mh.nodes:
             n.sleep() # to_cpu 
-        gated, non_gated, ex_maps = mh.select(return_gated_model=True)
+
+        base_value = args.base_value
+        assert base_value > 0
+        obj_value = args.obj_ratio
+        metric = args.metric
+        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True)
         filepath = student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
         tf.keras.utils.plot_model(gated, "query_gated.pdf", show_shapes=True)
         student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)

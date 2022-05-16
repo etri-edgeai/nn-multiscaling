@@ -76,6 +76,9 @@ class TFParser(common.Parser):
     def get_id(self, prefix):
         return self._parser.get_id(prefix)
 
+    def get_model_name(self):
+        return self._parser.model.name
+
     def _compute_constraints(self, layers):
         constraints = []
         for layer in layers:
@@ -116,7 +119,7 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False):
+        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None):
 
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
@@ -250,6 +253,8 @@ class TFParser(common.Parser):
                         subnet[0](data)
                     except Exception as e:
                         print("Extremely large!")
+                        print(target_shapes)
+                        print(subnet[0].summary())
                         continue
                     peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
                     if memory_limit < peak2-peak1:
@@ -401,6 +406,10 @@ class TFParser(common.Parser):
                 assert subnet_cmodel.input.shape[-1] == target_shapes[0][-1]
                 del subnet_gmodel
 
+                if sample_data: # overflow test
+                    y = subnet_cmodel(sample_data)
+                    if tf.math.is_inf(y).numpy().any():
+                        continue
             else:
                 subnet_cmodel = subnet[0]
 
@@ -500,6 +509,7 @@ class TFNet(common.Net):
         if self.is_sleeping():
             self.wakeup()
         outputs = self._model(sample_inputs)
+        self.sleep()
         return tf.reduce_mean(tf.keras.losses.mean_squared_error(sample_outputs, outputs))
 
     def get_cmodel(self, origin_model):
