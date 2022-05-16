@@ -37,12 +37,14 @@ class ModelHouse(object):
         nodes_ = []
         gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
+            print(len(nodes_))
             n = np.random.choice(self._nodes)
             alters = gen_.generate(n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
                 nodes_.append(na)
+                na.sleep()
         self._nodes.extend(nodes_)
 
     def build_approx(self, min_num=20, memory_limit=None, params_limit=None):
@@ -75,13 +77,19 @@ class ModelHouse(object):
             max_ = 0
             max_n = None
             old_len = len(maximal)
+
+            sum1 = 0
+            cnt1 = 0
+            sum2 = 0
+            cnt2 = 0
             for n in nodes:
                 #if "app" not in n.tag:
                 #    continue
 
                 on = n.origin
-                while on.origin != None:
-                    on = on.origin
+                if on is not None:
+                    while on.origin != None:
+                        on = on.origin
 
                 compatible = True
                 for m in maximal:
@@ -89,12 +97,30 @@ class ModelHouse(object):
                         compatible = False
                         break
                 if compatible:
-                    score = (on._profile["flops"] - n._profile["flops"]) - n._profile["mse"]
+                    if on is None:
+                        score = 1.0 - n._profile["mse"] * 0.5
+                    else:
+                        score = (on._profile["flops"] / n._profile["flops"]) - n._profile["mse"] * 0.5
                     if max_== 0 or max_ < score:
                         max_ = score
                         max_n = n
+
+                    if "app" in n.tag:
+                        sum2 += score
+                        cnt2 += 1
+                    else:
+                        sum1 += score
+                        cnt1 += 1
+
+            if cnt1 > 0:
+                print("sum1:", float(sum1)/cnt1)
+            
+            if cnt2 > 0:
+                print("sum2:", float(sum2)/cnt2)
+
             if max_n is not None and max_n not in maximal:
-               maximal.append(max_n)
+                print(max_n.id_, max_)
+                maximal.append(max_n)
 
             print(old_len, len(maximal))
             if old_len == len(maximal) and iter_ >= num_iters: # not changed

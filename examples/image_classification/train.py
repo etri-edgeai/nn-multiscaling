@@ -155,6 +155,9 @@ def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0,
     if callbacks is None:   
         callbacks = []
 
+    callbacks_ = model_handler.get_callbacks(iters)
+    callbacks += callbacks_
+
     # Prepare model model saving directory.
     if save_dir is not None:
         model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
@@ -172,6 +175,8 @@ def train(dataset, model, model_name, model_handler, epochs, sampling_ratio=1.0,
             save_freq="epoch",
             options=None,
         )
+        callbacks.append(mchk)
+
 
     if exclude_val:
         model_history = model.fit(train_data_generator,

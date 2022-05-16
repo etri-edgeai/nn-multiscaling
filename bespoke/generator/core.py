@@ -57,7 +57,7 @@ class PretrainedModelGenerator(Generator):
                 params_limit=params_limit,
                 history=history,
                 use_prefix=True,
-                use_random_walk=True)
+                use_random_walk=False)
             num_try += 1
             if nets is not None:
                 ret.extend([(n[0], self.models[ridx].__class__.__name__) for n in nets])
