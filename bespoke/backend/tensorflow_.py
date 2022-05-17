@@ -243,17 +243,17 @@ class TFParser(common.Parser):
                 if type(subnet[0].input) == list:
                     continue
 
-                scales = [0.75, 0.625, 0.5, 0.375, 0.25]
+                scales = [0.25, 0.375, 0.5, 0.625, 0.75]
                 pruning_cnt = len(scales)
                 giveup = False
                 while True:
 
-                    if pruning_cnt < len(scales):
+                    if pruning_cnt < len(scales) and pruning_cnt > -1:
                         scale = scales[pruning_cnt]
-                        print("Pruning! %f" % scale)
-                        subnet_ = prune(subnet[0], scale, namespace, custom_objects=None, ret_model=False):
-                        subnet = tuple([subnet_] + subnet[1:])
-                    elif pruning_cnt == -1:
+                        print("Pruning! %f %d" % (scale, pruning_cnt))
+                        subnet_ = prune(subnet[0], scale, self._namespace, custom_objects=self._parser.custom_objects, ret_model=True)
+                        subnet = tuple([subnet_] + list(subnet)[1:])
+                    elif pruning_cnt < 0:
                         giveup = True
                         break
                     
@@ -281,7 +281,7 @@ class TFParser(common.Parser):
                             pass_ = False
 
                     if not pass_:
-                        pruning_cnt _= 1
+                        pruning_cnt -= 1
                     else:
                         break
 
@@ -290,10 +290,11 @@ class TFParser(common.Parser):
                 else:
                     break
 
-                else:
-                    break
-
             if subnet is None:
+                continue
+
+            if target_shapes is not None and (subnet[0].output.shape[-1] < target_shapes[1][-1] or subnet[0].input.shape[-1] < target_shapes[0][-1]):
+                print("lack of channels...")
                 continue
 
             #constraints = self._compute_constraints(layers_)
@@ -366,7 +367,6 @@ class TFParser(common.Parser):
                             sgtop = gtop
                             break
                     """
-
                     score = sorted(score, key=lambda x:x[1], reverse=True)
                     input_mask = np.zeros((subnet[0].input.shape[-1]))
                     for cnt, (idx, s) in enumerate(score):
