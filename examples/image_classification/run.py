@@ -374,7 +374,7 @@ def run():
                 if n.is_sleeping():
                     n.net.wakeup()
                 if "alter" in n.tag:
-                    n.net.model = tf.keras.models.clone_model(model)
+                    n.net.model = tf.keras.models.clone_model(n.net.model)
             n.sleep() # to_cpu 
         transfer_learning(
             config["dataset"],
