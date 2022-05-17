@@ -87,14 +87,14 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None):
+    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1):
         nodes_ = []
         gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)
             alters = gen_.generate(
-                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit)
+                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n

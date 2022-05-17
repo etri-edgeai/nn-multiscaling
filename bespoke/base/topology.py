@@ -100,7 +100,10 @@ class Node(object):
         self._net.wakeup()
 
     def get_cmodel(self):
+        if self._origin.net.is_sleeping():
+            self._origin.wakeup()
         origin_model = self._origin.net.model
+        self._origin.sleep()
         return self.net.get_cmodel(origin_model)
 
     def save_model(self, save_dir):
