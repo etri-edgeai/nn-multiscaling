@@ -47,7 +47,7 @@ class ModelState(State):
         return ModelState(c, self.nodes, self.parser)
 
 
-def score_f(obj_value, base_value, metric, nodes):
+def score_f(obj_value, base_value, metric, lda, nodes):
     approx_value = base_value
     score = None
     sum_mse = 0
@@ -60,7 +60,7 @@ def score_f(obj_value, base_value, metric, nodes):
             approx_value = approx_value - on._profile[metric] + n._profile[metric]
         sum_mse += n._profile["mse"]
 
-    score = max(approx_value / obj_value, 1.0) + sum_mse * 0.01
+    score = max(approx_value / obj_value, 1.0) + sum_mse * lda
     print(approx_value, obj_value, sum_mse, score)
     return -1 * score
 
@@ -116,7 +116,7 @@ class ModelHouse(object):
                 nodes_[-1].origin = n
         self._nodes.extend(nodes_)
 
-    def select(self, spec, return_gated_model=False):
+    def select(self, spec, return_gated_model=False, lda=0.1):
         minimal = []
         nodes = [n for n in self._nodes]
         import random
@@ -143,9 +143,9 @@ class ModelHouse(object):
                         break
                 if compatible:
                     if on is None:
-                        score = max(approx_value / obj_value, 1.0) + n._profile["mse"] * 0.0
+                        score = max(approx_value / obj_value, 1.0) + n._profile["mse"] * lda
                     else:
-                        score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * 0.0
+                        score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score
@@ -160,7 +160,7 @@ class ModelHouse(object):
             else:
                 iter_ += 1
 
-        score_func = lambda state: score_f(obj_value, base_value, metric, state.selected_nodes)
+        score_func = lambda state: score_f(obj_value, base_value, metric, lda, state.selected_nodes)
         sa = SimulatedAnnealingSolver(score_func, max_niters=10000)
         init_state = ModelState(minimal, self._nodes, self._parser)
         last, best_score = sa.solve(init_state)
