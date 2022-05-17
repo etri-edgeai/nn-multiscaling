@@ -514,7 +514,8 @@ class TFNet(common.Net):
         return filepath
 
     def profile(self, sample_inputs, sample_outputs, cmodel=None):
-        
+        if self.is_sleeping():
+            self.wakeup()
         if cmodel is not None:
             return {
                 "flops": get_flops(cmodel, batch_size=1),
@@ -525,6 +526,7 @@ class TFNet(common.Net):
                 "flops": self.get_flops(),
                 "mse": float(self.get_mse(sample_inputs, sample_outputs).numpy())
             }
+        self.sleep()
 
     def get_flops(self):
         if self.is_sleeping():
@@ -540,7 +542,8 @@ class TFNet(common.Net):
         return tf.reduce_mean(tf.keras.losses.mean_squared_error(sample_outputs, outputs))
 
     def get_cmodel(self, origin_model):
-        self.wakeup()
+        if self.is_sleeping():
+            self.wakeup()
         flag = False
         for layer in self._model.layers:
             if layer.__class__ == SimplePruningGate:
@@ -554,6 +557,7 @@ class TFNet(common.Net):
         parser = PruningNNParser(origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
         parser.parse()
         cmodel = parser.cut(self._model)
+        self.sleep()
         return cmodel
 
     def is_sleeping(self):
@@ -668,6 +672,8 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         
         cmodel = n.get_cmodel()
         cmodel_map[n.id_] = cmodel
+        if n.net.is_sleeping():
+            n.net.wakeup()
         print(cmodel.count_params(), n.net.model.count_params())
 
         # restore
@@ -736,6 +742,9 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                     prev_target.append(t)
             prev_replacement += replacement
             ex_maps[-1][1].append((pos[-1][0], replacement[-1]["name"], 0, 0))
+
+        n.net.sleep()
+        onode.net.sleep()
 
     # Conduct replace_block
     model_dict = parser.replace_block(replacing_mappings, in_maps, ex_maps, parser.custom_objects)

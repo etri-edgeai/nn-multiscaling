@@ -337,12 +337,13 @@ def run():
     if args.mode == "build":
         build_time_t1 = time.time()
         b = RandomHouseBuilder(mh)
-        b.build(config["num_partitions"])
+        b.build(config["num_partitions"], config["step_ratio"])
         mh.build_base(
             model_list=config["models"],
             min_num=config["num_imported_submodels"],
             memory_limit=config["memory_limit"],
-            params_limit=config["params_limit"])
+            params_limit=config["params_limit"],
+            step_ratio=config["step_ratio"])
         use_tl = True
         build_time_t2 = time.time()
         running_time["build_time"].append(build_time_t2 - build_time_t1)
@@ -368,6 +369,11 @@ def run():
         assert args.target_dir is not None
         tl_time_t1 = time.time()
         for n in mh.nodes:
+            if args.init and args.mode == "build":
+                if n.is_sleeping():
+                    n.net.wakeup()
+                if "alter" in n.tag:
+                    n.net.model = tf.keras.models.clone_model(model)
             n.sleep() # to_cpu 
         transfer_learning(
             config["dataset"],

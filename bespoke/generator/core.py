@@ -38,7 +38,7 @@ class PretrainedModelGenerator(Generator):
         for m in self.models:
             m.build()
 
-    def generate(self, net, last=None, num=1, memory_limit=None, params_limit=None, sample_data=None):
+    def generate(self, net, last=None, num=1, memory_limit=None, params_limit=None, sample_data=None, step_ratio=0.1):
         # TODO: single input shape
         input_shape = net.input_shapes[0]
         output_shape = net.output_shapes[0]
@@ -58,7 +58,8 @@ class PretrainedModelGenerator(Generator):
                 history=history,
                 use_prefix=True,
                 use_random_walk=False,
-                sample_data=sample_data)
+                sample_data=sample_data,
+                step_ratio=step_ratio)
             num_try += 1
             if nets is not None:
                 ret.extend([(n[0], self.models[ridx].get_model_name()) for n in nets])
