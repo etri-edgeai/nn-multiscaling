@@ -371,7 +371,7 @@ def run():
         tl_time_t1 = time.time()
         for n in mh.nodes:
             if args.init and args.mode == "build":
-                if n.is_sleeping():
+                if n.net.is_sleeping():
                     n.net.wakeup()
                 if "alter" in n.tag:
                     n.net.model = tf.keras.models.clone_model(n.net.model)
