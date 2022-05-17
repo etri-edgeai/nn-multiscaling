@@ -243,26 +243,53 @@ class TFParser(common.Parser):
                 if type(subnet[0].input) == list:
                     continue
 
-                if memory_limit is not None and memory_limit > 0.0:
-                    shape = list(subnet[0].input.shape)
-                    shape[0] = batch_size
-                    data = np.random.rand(*shape)
-                    tf.config.experimental.reset_memory_stats('GPU:0')
-                    peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
-                    try:
-                        subnet[0](data)
-                    except Exception as e:
-                        print("Extremely large!")
-                        print(target_shapes)
-                        print(subnet[0].summary())
-                        continue
-                    peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
-                    if memory_limit < peak2-peak1:
-                        continue
+                scales = [0.75, 0.625, 0.5, 0.375, 0.25]
+                pruning_cnt = len(scales)
+                giveup = False
+                while True:
+
+                    if pruning_cnt < len(scales):
+                        scale = scales[pruning_cnt]
+                        print("Pruning! %f" % scale)
+                        subnet_ = prune(subnet[0], scale, namespace, custom_objects=None, ret_model=False):
+                        subnet = tuple([subnet_] + subnet[1:])
+                    elif pruning_cnt == -1:
+                        giveup = True
+                        break
+                    
+                    pass_ = True
+                    if memory_limit is not None and memory_limit > 0.0:
+                        shape = list(subnet[0].input.shape)
+                        shape[0] = batch_size
+                        data = np.random.rand(*shape)
+                        tf.config.experimental.reset_memory_stats('GPU:0')
+                        peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+                        try:
+                            subnet[0](data)
+                        except Exception as e:
+                            print("Extremely large! %d" % pruning_cnt)
+                            print(target_shapes)
+                            pruning_cnt -= 1
+                            continue
+                         
+                        peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+                        if memory_limit < peak2-peak1:
+                            pass_ = False
+
+                    if params_limit is not None and params_limit > 0.0:
+                        if subnet[0].count_params() > params_limit:
+                            pass_ = False
+
+                    if not pass_:
+                        pruning_cnt _= 1
+                    else:
+                        break
+
+                if giveup:
+                    continue
+                else:
                     break
-                if params_limit is not None and params_limit > 0.0:
-                    if subnet[0].count_params() > params_limit:
-                        continue
+
                 else:
                     break
 
@@ -855,7 +882,7 @@ def get_basemodel_path(dir_):
     return os.path.join(dir_, "base.h5")
     
 
-def prune(net, scale, namespace, custom_objects=None):
+def prune(net, scale, namespace, custom_objects=None, ret_model=False):
 
     # TODO: needs improvement
     """
@@ -870,7 +897,11 @@ def prune(net, scale, namespace, custom_objects=None):
             break
     pmodel = add_prefix(net.model, hit, custom_objects=custom_objects)
     """
-    parser = PruningNNParser(net.model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+
+    if type(net) == TFNet:
+        parser = PruningNNParser(net.model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+    else:
+        parser = PruningNNParser(net, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
     parser.parse()
 
     gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=True, with_mapping=True)
@@ -927,7 +958,10 @@ def prune(net, scale, namespace, custom_objects=None):
 
     # test
     cutmodel = parser.cut(gated_model)
-    del cutmodel
+    if ret_model:
+        return cutmodel
+    else:
+        del cutmodel
 
     net = TFNet(gated_model, custom_objects=parser.custom_objects)
     gate_mapping = {}
