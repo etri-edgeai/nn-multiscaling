@@ -356,7 +356,8 @@ def run():
         mh.build_approx(
             min_num=config["num_approx"],
             memory_limit=config["memory_limit"],
-            params_limit=config["params_limit"])
+            params_limit=config["params_limit"],
+            init=args.init)
         mh.save(args.target_dir)
         use_tl = True
         filter_ = lambda n: "app" in n.tag

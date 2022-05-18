@@ -891,7 +891,7 @@ def get_basemodel_path(dir_):
     return os.path.join(dir_, "base.h5")
     
 
-def prune(net, scale, namespace, custom_objects=None, ret_model=False):
+def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=False):
 
     # TODO: needs improvement
     """
@@ -914,6 +914,8 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False):
     parser.parse()
 
     gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=True, with_mapping=True)
+    if init:
+        gated_model = tf.keras.models.clone_model(gated_model)
     for layer in gated_model.layers:
         if type(layer) == SimplePruningGate:
             layer.collecting = False
