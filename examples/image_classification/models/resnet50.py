@@ -8,9 +8,8 @@ from tensorflow.keras.layers import Dropout, Dense, GlobalAveragePooling2D, Flat
 import numpy as np
 import cv2
 
-import efficientnet.tfkeras as efn
 
-from loss import BespokeTaskLoss, accuracy
+from .loss import BespokeTaskLoss, accuracy
 
 height = 224
 width = 224
@@ -33,9 +32,9 @@ def get_optimizer(mode=0):
         return Adam(lr=0.00001)
 
 def preprocess_func(img, dim):
-    img = tf.keras.applications.resnet.preprocess_input(img)
+    #img = tf.image.resize(img, (height, width))
+    img = tf.keras.applications.resnet_v2.preprocess_input(img)
     #img = cv2.resize(img, (height, width), interpolation=cv2.INTER_CUBIC)
-    img = tf.image.resize(img, (height, width))
     return img
 
 def get_model(dataset, n_classes=100):
@@ -59,9 +58,12 @@ def get_model(dataset, n_classes=100):
 def get_train_epochs():
     return 100
 
-def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}):
+def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False):
     optimizer = Adam(lr=0.0001)
-    model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
+    if transfer:
+        model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
+    else:
+        model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=run_eagerly)
 
 def get_callbacks(nstep):
     #reducing learning rate on plateau
