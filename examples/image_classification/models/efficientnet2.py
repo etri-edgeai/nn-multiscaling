@@ -20,7 +20,7 @@ else:
 height = 260
 width = 260
 input_shape = (height, width, 3) # network input
-batch_size = 32
+batch_size = 16
 
 def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
     shape = tf.shape(image)

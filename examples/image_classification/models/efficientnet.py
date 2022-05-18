@@ -92,7 +92,7 @@ def get_callbacks(nsteps=0):
     #early_stop = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10, restore_best_weights=True)
 
     #reducing learning rate on plateau
-    rlrop = ReduceLROnPlateau(monitor='val_loss', mode='min', patience= 5, factor= 0.5, min_lr= 1e-6, verbose=1)
+    rlrop = ReduceLROnPlateau(monitor='val_loss', mode='min', patience= 3, factor= 0.5, min_lr= 1e-6, verbose=1)
     return [rlrop]
 
 def get_custom_objects():
