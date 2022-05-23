@@ -275,6 +275,7 @@ class TFParser(common.Parser):
                         peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
                         if memory_limit < peak2-peak1:
                             pass_ = False
+                            print(memory_limit, peak2-peak1)
 
                     if params_limit is not None and params_limit > 0.0:
                         if subnet[0].count_params() > params_limit:

@@ -216,6 +216,7 @@ def run():
     parser.add_argument('--base_value', type=float, default=0, help='model')
     parser.add_argument('--obj_ratio', type=float, default=0.5, help='model')
     parser.add_argument('--lda', type=float, default=0.1, help='model')
+    parser.add_argument('--alter_ratio', type=float, default=1.0, help='model')
     parser.add_argument('--metric', type=str, default="flops", help='model')
     parser.add_argument('--teacher_path', type=str, default=None, help='model')
     parser.add_argument('--overwrite', action='store_true')
@@ -521,7 +522,7 @@ def run():
         assert base_value > 0
         obj_value = args.obj_ratio
         metric = args.metric
-        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda)
+        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
         filepath = student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
         tf.keras.utils.plot_model(gated, "query_gated.pdf", show_shapes=True)
         student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)

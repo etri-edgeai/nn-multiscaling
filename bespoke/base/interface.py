@@ -17,10 +17,11 @@ from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingS
 
 class ModelState(State):
 
-    def __init__(self, selected_nodes, nodes, parser):
+    def __init__(self, selected_nodes, nodes, parser, metric):
         self.selected_nodes = selected_nodes
         self.nodes = nodes
         self.parser = parser
+        self.metric = metric
             
     def get_next_impl(self):
         c = copy.copy(self.selected_nodes)
@@ -30,6 +31,16 @@ class ModelState(State):
         while True:
             comple = []
             for n in self.nodes:
+                if n._profile[self.metric] >= 1000000.0 and self.metric != "flops":
+                    continue
+                on = n.origin
+                if on is not None:
+                    while on.origin != None:
+                        on = on.origin
+                if on is not None:
+                    if on._profile[self.metric] >= 1000000.0 and self.metric != "flops":
+                        continue
+
                 compatible = True
                 for c_ in c:
                     if not self.parser.is_compatible(n, c_):
@@ -44,7 +55,7 @@ class ModelState(State):
                 n = np.random.choice(comple)
                 c.append(n)
            
-        return ModelState(c, self.nodes, self.parser)
+        return ModelState(c, self.nodes, self.parser, self.metric)
 
 
 def score_f(obj_value, base_value, metric, lda, nodes):
@@ -116,25 +127,36 @@ class ModelHouse(object):
                 nodes_[-1].origin = n
         self._nodes.extend(nodes_)
 
-    def select(self, spec, return_gated_model=False, lda=0.1):
+    def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
         minimal = []
         nodes = [n for n in self._nodes]
         import random
         random.shuffle(nodes)
+        if ratio < 1.0:
+            nodes = nodes[:int(len(nodes)*ratio)]
 
         num_iters = 100
         iter_ = 0
         metric, obj_value, base_value = spec
         approx_value = base_value
+
+        print(metric, base_value)
         while True:
             min_ = -1
             min_n = None
+            min_on = None
             old_len = len(minimal)
             for n in nodes:
+                if n._profile[metric] >= 1000000.0 and metric != "flops":
+                    continue
+
                 on = n.origin
                 if on is not None:
                     while on.origin != None:
                         on = on.origin
+
+                if on is not None and on._profile[metric] >= 1000000.0 and metric != "flops":
+                    continue
 
                 compatible = True
                 for m in minimal:
@@ -149,11 +171,13 @@ class ModelHouse(object):
 
                     if min_== -1 or min_ > score:
                         min_ = score
+                        min_on = on
                         min_n = n
 
             if min_n is not None and min_n not in minimal:
                 minimal.append(min_n)
-                approx_value -= on._profile[metric] - n._profile[metric]
+                if min_on is not None:
+                    approx_value -= min_on._profile[metric] - n._profile[metric]
 
             if old_len == len(minimal) or iter_ >= num_iters: # not changed
                 break
@@ -162,7 +186,7 @@ class ModelHouse(object):
 
         score_func = lambda state: score_f(obj_value, base_value, metric, lda, state.selected_nodes)
         sa = SimulatedAnnealingSolver(score_func, max_niters=10000)
-        init_state = ModelState(minimal, self._nodes, self._parser)
+        init_state = ModelState(minimal, nodes, self._parser, metric)
         last, best_score = sa.solve(init_state)
         minimal = last.selected_nodes
 
