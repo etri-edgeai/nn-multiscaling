@@ -8,6 +8,7 @@ from tensorflow.keras.layers import Dropout, Dense, GlobalAveragePooling2D, Flat
 import numpy as np
 import cv2
 
+from image_processing import _central_crop
 from .loss import BespokeTaskLoss, accuracy
 
 height = 224
@@ -30,7 +31,7 @@ def preprocess_func(img, shape):
 
 def parse_fn(example_serialized):
     image = example_serialized["image"]
-    resized_image = tf.keras.preprocessing.image.smart_resize(image, [256, 256], interpolation='bicubic')
+    image = tf.keras.preprocessing.image.smart_resize(image, [256, 256], interpolation='bicubic')
     image = _central_crop([image], 224, 224)[0]
     return {"image": image, "label":example_serialized["label"]}
 
