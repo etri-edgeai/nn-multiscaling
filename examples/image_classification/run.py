@@ -107,19 +107,19 @@ def validate(model, test_data_gen, model_handler):
     model_handler.compile(model, run_eagerly=True)
     return model.evaluate(test_data_gen, verbose=1)[1]
 
-def finetune(dataset, model, model_name, model_handler, num_epochs, num_classes, sampling_ratio=1.0, distillation=False, use_dali=False, save_dir=None):
+def finetune(dataset, model, model_name, model_handler, num_epochs, num_classes, sampling_ratio=1.0, distillation=False, use_dali=False, save_dir=None, lr=None):
     if distillation:
         #loss = {model.output[0].node.outbound_layer.name:BespokeTaskLoss()}
         #metrics={model.output[0].node.outbound_layer.name:accuracy}
         loss = {model.output[0].name.split("/")[0]:BespokeTaskLoss()}
         metrics={model.output[0].name.split("/")[0]:accuracy}
-        model_handler.compile(model, run_eagerly=False, transfer=True, loss=loss, metrics=metrics)
+        model_handler.compile(model, run_eagerly=False, transfer=True, loss=loss, metrics=metrics, lr=lr)
     else:
-        model_handler.compile(model, run_eagerly=True, transfer=False)
+        model_handler.compile(model, run_eagerly=True, transfer=False, lr=lr)
     train(dataset, model, "finetuned_"+model_name, model_handler, num_epochs, callbacks=None, augment=True, n_classes=num_classes, sampling_ratio=sampling_ratio, use_dali=use_dali, save_dir=save_dir)
     
 
-def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1):
+def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1, lr=None):
     loss = {mh.model.layers[-1].name:BespokeTaskLoss()}
     metrics={mh.model.layers[-1].name:accuracy}
     for n in mh.nodes:
@@ -163,7 +163,7 @@ def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None,
 
             try:
                 house, output_idx, output_map = mh.make_train_model(targets, scale=1.0)
-                model_handler.compile(house, run_eagerly=True, transfer=True, loss=loss, metrics=metrics)
+                model_handler.compile(house, run_eagerly=True, transfer=True, loss=loss, metrics=metrics, lr=lr)
                 train(dataset, house, "test", model_handler, num_epochs, callbacks=None, augment=True, exclude_val=True, n_classes=num_classes, sampling_ratio=sampling_ratio)
 
                 del house, output_idx, output_map
@@ -224,10 +224,12 @@ def run():
     parser.add_argument('--use_dali', action='store_true')
     overriding_params = [
         ("sampling_ratio", float),
+        ("lr", float),
         ("dloss_scale", float),
         ("memory_limit", float),
         ("params_limit", float),
         ("step_ratio", float),
+        ("astep_ratio", float),
         ("batch_size_limit", int),
         ("num_partitions", int),
         ("num_imported_submodels", int),
@@ -345,7 +347,7 @@ def run():
             min_num=config["num_imported_submodels"],
             memory_limit=config["memory_limit"],
             params_limit=config["params_limit"],
-            step_ratio=config["step_ratio"])
+            step_ratio=config["astep_ratio"])
         use_tl = True
         build_time_t2 = time.time()
         running_time["build_time"].append(build_time_t2 - build_time_t1)
@@ -387,7 +389,8 @@ def run():
             num_epochs=config["num_epochs"],
             num_classes=config["num_classes"],
             sampling_ratio=config["sampling_ratio"],
-            filter_=filter_
+            filter_=filter_,
+            lr=args.lr
         )
         tl_time_t2 = time.time()
         running_time["transfer_learning_time"].append(tl_time_t2 - tl_time_t1)
@@ -455,7 +458,8 @@ def run():
             sampling_ratio=config["sampling_ratio"],
             distillation=distillation,
             use_dali=args.use_dali,
-            save_dir=dirname)
+            save_dir=dirname,
+            lr=args.lr)
         filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
         finetune_time_t2 = time.time()
         running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)

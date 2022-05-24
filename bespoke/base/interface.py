@@ -68,7 +68,10 @@ def score_f(obj_value, base_value, metric, lda, nodes):
             while on.origin != None:
                 on = on.origin
         if on is not None:
-            approx_value = approx_value - on._profile[metric] + n._profile[metric]
+            if metric != "igpu":
+                approx_value = approx_value - on._profile[metric] + n._profile[metric]
+            else:
+                approx_value = approx_value - n._profile[metric]
         sum_mse += n._profile["mse"]
 
     score = max(approx_value / obj_value, 1.0) + sum_mse * lda
@@ -127,6 +130,12 @@ class ModelHouse(object):
                 nodes_[-1].origin = n
         self._nodes.extend(nodes_)
 
+    def get_node(self, id_):
+        for n in self._nodes:
+            if n.id_ == id_:
+                return n
+        return None
+
     def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
         minimal = []
         nodes = [n for n in self._nodes]
@@ -167,7 +176,10 @@ class ModelHouse(object):
                     if on is None:
                         score = max(approx_value / obj_value, 1.0) + n._profile["mse"] * lda
                     else:
-                        score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
+                        if metric != "igpu":
+                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
+                        else:
+                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score
@@ -177,7 +189,10 @@ class ModelHouse(object):
             if min_n is not None and min_n not in minimal:
                 minimal.append(min_n)
                 if min_on is not None:
-                    approx_value -= min_on._profile[metric] - n._profile[metric]
+                    if metric != "igpu":
+                        approx_value = approx_value - min_on._profile[metric] + n._profile[metric]
+                    else:
+                        approx_value = approx_value - n._profile[metric]
 
             if old_len == len(minimal) or iter_ >= num_iters: # not changed
                 break
@@ -191,7 +206,7 @@ class ModelHouse(object):
         minimal = last.selected_nodes
 
         for m in minimal:
-            print(m.id_, m.pos)
+            print(m.id_, m.tag, m.pos)
 
         ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
         return ret
