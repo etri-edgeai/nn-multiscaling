@@ -5,6 +5,12 @@ import time
 import argparse
 import numpy as np
 import tensorflow as tf
+physical_devices = tf.config.list_physical_devices('GPU')
+try:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    tf.config.experimental.set_memory_growth(physical_devices[1], True)
+except:
+    pass
 
 from profile import measure
 
@@ -36,7 +42,8 @@ def tf_convert_tflite(model):
 
 def compute_time(model_path, metric):
     model = tf.keras.models.load_model(model_path)
-    if metric in ["gpu", "cpu"]:
+    print(model.count_params())
+    if metric in ["gpu", "cpu", "tflite", "onnx_gpu", "onnx_cpu"]:
         return measure(model, mode=metric)
     else:
         from keras_flops import get_flops
@@ -54,10 +61,10 @@ alter_ratio = str(args.alter_ratio)
 dataset_config = args.config
 model_name = args.model_name
 
-cmd = "python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
+cmd = "CUDA_VISIBLE_DEVICES=0 python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
 os.system(cmd)
 
-cmd = "python -u run.py --config "+dataset_config+" --mode cut --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + model2 + " --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
+cmd = "CUDA_VISIBLE_DEVICES=0 python -u run.py --config "+dataset_config+" --mode cut --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + model2 + " --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
 os.system(cmd)
 
 cut_modelpath = dir_ + "/students/cut_gated_studentgoodgood.h5"

@@ -792,22 +792,54 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             layer.gates.assign(np.zeros((layer.ngates,)))
 
     sharing_groups = parser_.get_sharing_groups()
+    sum_ratio = {}
+    sum_cnt = {}
     for t in exit_gates:
         gates = exit_gates[t]
         target_gate = gmodel.get_layer(gm[(t, 0)][0]["config"]["name"])
         tgates = target_gate.gates.numpy()
-        union = (((gates + tgates) == 0.0) == False).astype(np.float32)
-        target_gate.gates.assign(union)
+
+        for gidx, g in enumerate(sharing_groups):
+            if gidx not in sum_ratio:
+                sum_ratio[gidx] = 0.0
+                sum_cnt[gidx] = 0
+            if t in g:
+                sum_ratio[gidx] = max(float(np.sum(gates)) / target_gate.ngates, sum_ratio[gidx])
+                sum_cnt[gidx] += 1
+                break
+        #union = (((gates + tgates) == 0.0) == False).astype(np.float32)
+        #target_gate.gates.assign(union)
 
     for t in exit_gates:
         gates = exit_gates[t]
         target_gate = gmodel.get_layer(gm[(t, 0)][0]["config"]["name"])
-        tgates = target_gate.gates.numpy()
-        for g in sharing_groups:
+        #tgates = target_gate.gates.numpy()
+        for gidx, g in enumerate(sharing_groups):
             if t in g:
+                sum_ = None 
+                for l in g:
+                    layer = gmodel.get_layer(l)
+                    if len(layer.get_weights()) > 0:
+                        w = layer.get_weights()[0]
+                        w = np.abs(w)
+                        w = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
+                        if sum_ is None:
+                            sum_ = w
+                        else:
+                            sum_ += w
+                sorted_ = np.sort(sum_, axis=None)
+                #gscale = float(sum_ratio[gidx]) / sum_cnt[gidx]
+                gscale = float(sum_ratio[gidx])
+                remained = min(int((len(sorted_)-1)*gscale), len(sorted_)-1-5)
+                if remained >= len(sum_):
+                    remained = len(sum_)-1
+                val = sorted_[remained]
+                mask = (sum_ >= val).astype(np.float32)
+
                 for l in g:
                     target_gate = gmodel.get_layer(gm[(l, 0)][0]["config"]["name"])
-                    target_gate.gates.assign(tgates)
+                    #target_gate.gates.assign(tgates)
+                    target_gate.gates.assign(mask)
 
     for layer in gmodel.layers:
         if layer.__class__ == SimplePruningGate:
@@ -921,8 +953,6 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         if type(layer) == SimplePruningGate:
             layer.collecting = False
             layer.data_collecting = False
-    for layer in gated_model.layers:
-        if layer.__class__ == SimplePruningGate:
             layer.gates.assign(np.ones((layer.ngates,)))
 
     last_transformers = parser.get_last_transformers()
@@ -973,6 +1003,7 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     if ret_model:
         return cutmodel
     else:
+        print(gated_model.output.shape, cutmodel.output.shape)
         del cutmodel
 
     net = TFNet(gated_model, custom_objects=parser.custom_objects)

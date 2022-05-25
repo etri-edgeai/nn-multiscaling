@@ -25,8 +25,12 @@ class ModelState(State):
             
     def get_next_impl(self):
         c = copy.copy(self.selected_nodes)
-        random.shuffle(c)
-        c.pop()
+        while len(c) > 0:
+            random.shuffle(c)
+            c.pop()
+
+            if random.random() > 0.25:
+                break
 
         while True:
             comple = []
@@ -123,7 +127,7 @@ class ModelHouse(object):
             print(len(nodes_))
             n = np.random.choice(self._nodes)
             tag = "app_origin" if n.tag == "origin" else "app_alter"
-            scale = np.random.choice([0.125, 0.25, 0.375, 0.5, 0.625, 0.75])
+            scale = np.random.choice([0.25, 0.375, 0.5, 0.625, 0.75, 0.875])
             alters = gen_.generate(n.net, [scale], custom_objects=self._custom_objects, init=init)
             for idx, a in enumerate(alters):
                 nodes_.append(Node(self._parser.get_id("anode"), tag, a, pos=n.pos))
@@ -190,9 +194,9 @@ class ModelHouse(object):
                 minimal.append(min_n)
                 if min_on is not None:
                     if metric != "igpu":
-                        approx_value = approx_value - min_on._profile[metric] + n._profile[metric]
+                        approx_value = approx_value - min_on._profile[metric] + min_n._profile[metric]
                     else:
-                        approx_value = approx_value - n._profile[metric]
+                        approx_value = approx_value - min_n._profile[metric]
 
             if old_len == len(minimal) or iter_ >= num_iters: # not changed
                 break
