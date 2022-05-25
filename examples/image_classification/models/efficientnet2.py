@@ -80,8 +80,10 @@ def get_optimizer(mode=0):
         return Adam(lr=0.00001)
 
 
-def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False):
-    optimizer = Adam(lr=0.001)
+def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False, lr=None):
+    if lr is None:
+        lr = 0.001
+    optimizer = Adam(lr=lr)
     if transfer:
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
     else:
