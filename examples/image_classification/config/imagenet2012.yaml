@@ -8,6 +8,8 @@ models:
   - EfficientNetV2B1
   - EfficientNetV2S
 
+lr: 0.001
+astep_ratio: 0.1
 sampling_ratio: 0.1
 dloss_scale: 0.5
 memory_limit: 205168896

@@ -315,7 +315,7 @@ def run():
         "StopGradientLayer":StopGradientLayer
     }
     if args.model_path is not None:
-        if config["dataset"] == "imagenet2012" and args.mode != "finetune":
+        if config["dataset"] == "imagenet2012" and args.mode not in ["finetune", "cut"]:
             model_class = None
             for model_ in MODELS:
                 if args.model_path in model_.__name__:

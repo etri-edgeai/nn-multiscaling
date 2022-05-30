@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
 parser.add_argument('--config', type=str, required=True) # dataset-sensitive configuration
 parser.add_argument('--source_dir', type=str, help='model', required=True)
 parser.add_argument('--model_name', type=str, help='model', required=True)
+parser.add_argument('--postfix', type=str, help='model', default="good")
 parser.add_argument('--base_value', type=float, help='model', required=True)
 parser.add_argument('--obj_ratio', type=float,  help='model', required=True)
 parser.add_argument('--lda', type=float, help='model', required=True)
@@ -52,8 +53,8 @@ def compute_time(model_path, metric):
         return get_flops(model)
 
 dir_ = args.source_dir
-model1 = dir_+"/students/gated_studentgood.h5"
-model2 = dir_+"/students/nongated_studentgood.h5"
+model1 = dir_+"/students/gated_student%s.h5" % args.postfix
+model2 = dir_+"/students/nongated_student%s.h5" % args.postfix
 
 base_value = str(args.base_value)
 obj_ratio = str(args.obj_ratio)
@@ -63,16 +64,16 @@ alter_ratio = str(args.alter_ratio)
 dataset_config = args.config
 model_name = args.model_name
 
-cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
+cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
 os.system(cmd)
 
-cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode cut --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + model2 + " --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
+cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode cut --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + model2 + " --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
 os.system(cmd)
 
-cut_modelpath = dir_ + "/students/cut_gated_studentgoodgood.h5"
+cut_modelpath = dir_ + "/students/cut_gated_student%s%s.h5" % (args.postfix, args.postfix)
 print(compute_time(cut_modelpath, metric))
 
 print("finetune the following cmd!")
 teacher_path = dir_ +"/base.h5"
-cmd = "python -u run.py --config "+dataset_config+" --mode finetune --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + teacher_path + " --sampling_ratio 1.0 --num_epochs 50 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix good --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
+cmd = "python -u run.py --config "+dataset_config+" --mode finetune --model_name "+model_name+" --model_path " + model1 + " --teacher_path " + teacher_path + " --sampling_ratio 1.0 --num_epochs 50 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
 print(cmd)
