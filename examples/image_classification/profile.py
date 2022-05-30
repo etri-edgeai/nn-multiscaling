@@ -65,6 +65,8 @@ def tf_convert_tflite(model):
 def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
     total_t = 0
     input_shape = list(model.input.shape)
+    if input_shape[1] is None:
+        input_shape = [None, 224, 224, 3]
     if batch_size == -1:
         if mode == "gpu":
             input_shape[0] = BATCH_SIZE_GPU
@@ -239,6 +241,7 @@ def run():
             if "app" in val["tag"]:
                 #rmodel_path = os.path.join(dir_, "nets", val["origin"]+".h5")
                 #reference_model = tf.keras.models.load_model(rmodel_path)
+                mh.get_node(val["origin"]).net.wakeup()
                 reference_model = mh.get_node(val["origin"]).net.model
                 parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
                 parser.parse()
@@ -246,6 +249,7 @@ def run():
                 print(model.count_params(), model_.count_params())
                 model = model_
                 print("ORIGIN:", data[val["origin"]])
+                mh.get_node(val["origin"]).net.sleep()
 
             #if "flops" in profile:
             #    flops = profile["flops"]
@@ -266,14 +270,16 @@ def run():
                         emodel = mh._parser.extract(mh.origin_nodes, [mh.get_node(key)])
                         igpu = measure(emodel, mode="gpu")
                         igpu = base["gpu"] - igpu
-                gpu = measure(model, mode="gpu")
+                #gpu = measure(model, mode="gpu")
                 if not notflite:
                     try:
                         tflite = measure(model, mode="tflite")
                     except Exception as e:
                         print(e)
                         tflite = 100000000000.0
-            cpu = measure(model, mode="cpu")
+            #cpu = measure(model, mode="cpu")
+            gpu = 0
+            cpu = 0
             onnx_gpu = measure(model, mode="onnx_gpu")
             onnx_cpu = measure(model, mode="onnx_cpu")
 
