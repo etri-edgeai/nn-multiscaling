@@ -28,12 +28,14 @@ from tensorflow import keras
 
 from dataloader import augment
 from dataloader import preprocessing
-from dataloader import Dali
+#from dataloader import Dali
 
 import horovod.tensorflow.keras as hvd
-import nvidia.dali.plugin.tf as dali_tf
+#import nvidia.dali.plugin.tf as dali_tf
 
+import tensorflow_datasets as tfds
 
+import glob
 
 
 
@@ -230,7 +232,7 @@ def mixing_lite(images, mixup_weights, cutmix_masks, batch_size, do_mixup, do_cu
     # split the batch half-half, and apply mixup and cutmix for each half.
     bs = batch_size // 2
     images_mixup = images[:bs] * mixup_weights + images[:bs][::-1] * (1. - mixup_weights)
-    images_cutmix = images[bs:] * (1. - cutmix_masks) * + images[bs:][::-1] * cutmix_masks
+    images_cutmix = images[bs:] * (1. - cutmix_masks) + images[bs:][::-1] * cutmix_masks
     
     # concat order must be consistent with mixing fn
     return tf.concat([images_mixup, images_cutmix], axis=0) 
@@ -254,7 +256,7 @@ class Dataset:
   """
 
   def __init__(self, 
-  data_dir,
+  dataset,
   index_file_dir,
   split='train',
   num_classes=None,
@@ -275,14 +277,13 @@ class Dataset:
   mixup_alpha=0.0,
   defer_img_mixing=True,
   hvd_size=None,
+  model_preprocess_func=None,
   disable_map_parallelization=False
   ):
     """Initialize the builder from the config."""
-    if not os.path.exists(data_dir):
-        raise FileNotFoundError('Cannot find data dir: {}'.format(data_dir))
     if one_hot and num_classes is None:
         raise FileNotFoundError('Number of classes is required for one_hot')
-    self._data_dir = data_dir
+    self._dataset = dataset
     self._split = split
     self._image_size = image_size
     self._num_classes = num_classes
@@ -302,8 +303,8 @@ class Dataset:
     self.cutmix_alpha = cutmix_alpha
     self.defer_img_mixing = defer_img_mixing
     self.disable_map_parallelization = disable_map_parallelization
-    #self._num_gpus = hvd.size() if not hvd_size else hvd_size
-    self._num_gpus = 1
+    self.model_preprocess_func = model_preprocess_func
+    self._num_gpus = hvd.size() if not hvd_size else hvd_size
     
 
     if self._augmenter_name is not None:
@@ -402,12 +403,9 @@ class Dataset:
         width=self._image_size,
         batch_size=self.local_batch_size,
         num_threads=1,
-        #device_id=hvd.local_rank(),
-        #shard_id=hvd.rank(),
-        #num_gpus=hvd.size(),
-        device_id = 0,
-        shard_id = 0,
-        num_gpus = 1,
+        device_id=hvd.local_rank(),
+        shard_id=hvd.rank(),
+        num_gpus=hvd.size(),
         num_classes=self.num_classes,
         deterministic=False,
         dali_cpu=False,
@@ -427,8 +425,7 @@ class Dataset:
             batch_size=self.local_batch_size,
             output_shapes=shapes,
             output_dtypes=dtypes,
-            #device_id=hvd.local_rank())
-            device_id=0)
+            device_id=hvd.local_rank())
         # if self.is_training and self._augmenter:
         #     print('Augmenting with {}'.format(self._augmenter))
         #     dataset.unbatch().map(self.augment_pipeline, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(self.local_batch_size)
@@ -437,7 +434,6 @@ class Dataset:
         print("Using tf native pipeline for {train} dataloading".format(train = "training" if self.is_training else "validation"))
         dataset = self.load_records()
         dataset = self.pipeline(dataset)
-
         return dataset
 
   # def augment_pipeline(self, image, label) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -447,12 +443,10 @@ class Dataset:
 
   def load_records(self) -> tf.data.Dataset:
     """Return a dataset loading files with TFRecords."""
-    if self._data_dir is None:
+    if self._dataset is None:
         raise ValueError('Dataset must specify a path for the data files.')
 
-    file_pattern = os.path.join(self._data_dir,
-                                  '{}*'.format(self._split))
-    dataset = tf.data.Dataset.list_files(file_pattern, shuffle=False)
+    dataset = tfds.load(self._dataset, split=self._split)
     return dataset
 
   def pipeline(self, dataset: tf.data.Dataset) -> tf.data.Dataset:
@@ -481,13 +475,6 @@ class Dataset:
 
     if self.is_training and not self._cache:
       dataset = dataset.repeat()
-
-    # Read the data from disk in parallel
-    dataset = dataset.interleave(
-        tf.data.TFRecordDataset,
-        cycle_length=10,
-        block_length=1,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     if self._cache:
       dataset = dataset.cache()
@@ -531,39 +518,28 @@ class Dataset:
 
     return dataset
 
-  def parse_record(self, record: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+  #def parse_record(self, record: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+  def parse_record(self, record):
     """Parse an ImageNet record from a serialized string Tensor."""
+
+    """
     keys_to_features = {
-        'image/encoded':
+        'image':
             tf.io.FixedLenFeature((), tf.string, ''),
-        'image/format':
-            tf.io.FixedLenFeature((), tf.string, 'jpeg'),
-        'image/class/label':
+        'label':
             tf.io.FixedLenFeature([], tf.int64, -1),
-        'image/class/text':
-            tf.io.FixedLenFeature([], tf.string, ''),
-        'image/object/bbox/xmin':
-            tf.io.VarLenFeature(dtype=tf.float32),
-        'image/object/bbox/ymin':
-            tf.io.VarLenFeature(dtype=tf.float32),
-        'image/object/bbox/xmax':
-            tf.io.VarLenFeature(dtype=tf.float32),
-        'image/object/bbox/ymax':
-            tf.io.VarLenFeature(dtype=tf.float32),
-        'image/object/class/label':
-            tf.io.VarLenFeature(dtype=tf.int64),
+        'file_name':
+            tf.io.FixedLenFeature([], tf.string, '')
     }
 
     parsed = tf.io.parse_single_example(record, keys_to_features)
+    """
+    parsed = record
 
-    label = tf.reshape(parsed['image/class/label'], shape=[1])
+    label = tf.reshape(parsed['label'], shape=[1])
     label = tf.cast(label, dtype=tf.int32)
 
-    # Subtract one so that labels are in [0, 1000)
-    label -= 1
-
-    image_bytes = tf.reshape(parsed['image/encoded'], shape=[])
-    image, label = self.preprocess(image_bytes, label)
+    image, label = self.preprocess(parsed['image'], label)
 
     # populate features and labels dict
     features = dict()
@@ -596,6 +572,8 @@ class Dataset:
           mean_subtract=self._mean_subtract,
           standardize=self._standardize,
           dtype=self.dtype)
+
+    image = self.model_preprocess_func(image)
 
     label = tf.cast(label, tf.int32)
     if self._one_hot:

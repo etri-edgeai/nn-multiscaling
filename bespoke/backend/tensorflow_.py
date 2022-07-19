@@ -5,6 +5,8 @@ import os
 import random
 import json
 import copy
+import tempfile
+import pickle
 
 from tensorflow.keras import layers
 import tensorflow as tf
@@ -910,8 +912,9 @@ def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
                 output_map.append((t_out, a_out))
 
     house = tf.keras.Model(model.inputs, outputs) # for test
-    for (t, s) in output_map:
-        house.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
+
+    #for (t, s) in output_map:
+    #    house.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
 
     return house, output_idx, output_map
 
@@ -1087,7 +1090,7 @@ def cut(model, reference_model, custom_objects):
     parser.parse()
     return parser.cut(model)
 
-def make_distiller(model, teacher, distil_loc, scale=0.1):
+def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
 
     toutputs = []
     for loc in distil_loc:
@@ -1095,9 +1098,13 @@ def make_distiller(model, teacher, distil_loc, scale=0.1):
         toutputs.append(teacher.get_layer(tlayer).output)
     toutputs.append(teacher.output)
     new_teacher = tf.keras.Model(teacher.input, toutputs)
-    toutputs_ = new_teacher(model.input)
+    toutputs_ = new_teacher(model.get_layer("input_lambda").output)
 
-    new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
+    if model_builder is None:
+        new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
+    else:
+        new_model = model_builder(model.input, [model.output]+toutputs_)
+
     tf.keras.utils.plot_model(new_model, "distill.pdf")
 
     for idx, loc in enumerate(distil_loc):
@@ -1118,3 +1125,34 @@ def make_distiller(model, teacher, distil_loc, scale=0.1):
             layer.data_collecting = False
 
     return new_model
+
+def save_transfering_model(dirpath, house, output_idx, output_map):
+    model_path = os.path.join(dirpath, "model.h5")
+    output_idx_path = os.path.join(dirpath, "output_idx.pickle")
+    output_map_path = os.path.join(dirpath, "output_map.pickle")
+
+    tf.keras.models.save_model(house, model_path, overwrite=True)
+    with open(output_idx_path, "wb") as f:
+        pickle.dump(output_idx, f)
+
+    with open(output_map_path, "wb") as f:
+        output_map_ = [
+            (a.name, b.name)
+            for a, b in output_map
+        ]
+        pickle.dump(output_map_,f)
+        
+    return
+
+def make_transfer_model(model, output_idx, output_map, scale, model_builder=None):
+
+    if model_builder is not None:
+        model = model_builder(model.input, model.output)
+
+    tf.keras.utils.plot_model(model, "ttt.pdf")
+    for (t, s) in output_map:
+        t = model.outputs[output_idx[t]]
+        s = model.outputs[output_idx[s]]
+        model.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
+
+    return model

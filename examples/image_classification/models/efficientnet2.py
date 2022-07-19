@@ -7,6 +7,7 @@ from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dropout, Dense, GlobalAveragePooling2D, Flatten, BatchNormalization
 import numpy as np
 import cv2
+import horovod.tensorflow.keras as hvd
 
 from .loss import BespokeTaskLoss, accuracy
 
@@ -20,7 +21,7 @@ else:
 height = 260
 width = 260
 input_shape = (height, width, 3) # network input
-batch_size = 16
+batch_size = 64
 
 def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
     shape = tf.shape(image)
@@ -47,7 +48,12 @@ def get_name():
     return "efnet"
 
 def preprocess_func(img, shape):
-    img = preprocess_input(img)
+
+    img = tf.keras.applications.imagenet_utils.preprocess_input(
+        img, data_format=None, mode='torch'
+        )
+
+    #img = preprocess_input(img)
     return img
 
 def parse_fn(example_serialized):
@@ -80,10 +86,13 @@ def get_optimizer(mode=0):
         return Adam(lr=0.00001)
 
 
-def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False, lr=None):
+def compile(model, run_eagerly=True, loss={'dense':BespokeTaskLoss()}, metrics={'dense':accuracy}, transfer=False, lr=None, post_opt=None):
+
     if lr is None:
         lr = 0.001
     optimizer = Adam(lr=lr)
+    if post_opt is not None:
+        optimizer = post_opt(optimizer)
     if transfer:
         model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=run_eagerly)
     else:
@@ -94,7 +103,7 @@ def get_callbacks(nsteps=0):
     #early_stop = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10, restore_best_weights=True)
 
     #reducing learning rate on plateau
-    rlrop = ReduceLROnPlateau(monitor='val_loss', mode='min', patience= 5, factor= 0.5, min_lr= 1e-6, verbose=1)
+    rlrop = ReduceLROnPlateau(monitor='val_loss', mode='min', patience= 3, factor= 0.5, min_lr= 1e-6, verbose=1)
     return [rlrop]
 
 def get_custom_objects():

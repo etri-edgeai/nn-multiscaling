@@ -3,29 +3,43 @@ from silence_tensorflow import silence_tensorflow
 silence_tensorflow()
 
 import json
+import tempfile
 import os
+os.environ.pop('TF_CONFIG', None)
+
+import sys
+if '.' not in sys.path:
+  sys.path.insert(0, '.')
+
 import copy
 import traceback
 import argparse
-import sys
 import shutil
 import time
+import subprocess
+import pickle
+
+import horovod.tensorflow.keras as hvd
+hvd.init()
 
 import tensorflow as tf
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices) > 0:
-    tf.config.experimental.set_memory_growth(
-        physical_devices[0], True
-        )
+    for i, p in enumerate(physical_devices):
+        tf.config.experimental.set_memory_growth(
+            physical_devices[i], True
+            )
+    tf.config.set_visible_devices(physical_devices[hvd.local_rank()], 'GPU')
 tf.random.set_seed(2)
+#tf.config.run_functions_eagerly(False)
+#tf.compat.v1.disable_eager_execution()
+#tf.data.experimental.enable_debug_mode()
 import random
 random.seed(1234)
 import numpy as np
 np.random.seed(1234)
 import yaml
 
-#from tensorflow.keras import mixed_precision
-#mixed_precision.set_global_policy('mixed_float16')
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -41,10 +55,13 @@ from bespoke import config as bespoke_config
 from bespoke import backend as B
 
 from models.loss import BespokeTaskLoss, accuracy
-from train import train, load_data
+from train import train, load_dataset
+from models.custom import GAModel
+from prep import add_augmentation, change_dtype, get_custom_objects
 
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB2
 
+import horovod
 
 MODELS = [
     tf.keras.applications.ResNet50V2,
@@ -77,6 +94,7 @@ def get_handler(model_name):
         raise ValueError("%s is not ready." % model_name)
     return model_handler
 
+
 def student_model_save(model, dir_, inplace=False, prefix=None, postfix=""):
 
     if prefix is None:
@@ -98,28 +116,99 @@ def student_model_save(model, dir_, inplace=False, prefix=None, postfix=""):
         while os.path.exists(filepath):
             cnt += 1
             filepath = os.path.join(student_house_path, "%s_%d.h5" % (basename, cnt))
-    tf.keras.models.save_model(model, filepath, overwrite=True)
+    tf.keras.models.save_model(model, filepath, overwrite=True, include_optimizer=False)
     print("model saving... %s done" % filepath)
     return filepath
 
 
 def validate(model, test_data_gen, model_handler):
-    model_handler.compile(model, run_eagerly=True)
+    model_handler.compile(model, run_eagerly=False)
     return model.evaluate(test_data_gen, verbose=1)[1]
 
-def finetune(dataset, model, model_name, model_handler, num_epochs, num_classes, sampling_ratio=1.0, distillation=False, use_dali=False, save_dir=None, lr=None):
-    if distillation:
-        #loss = {model.output[0].node.outbound_layer.name:BespokeTaskLoss()}
-        #metrics={model.output[0].node.outbound_layer.name:accuracy}
-        loss = {model.output[0].name.split("/")[0]:BespokeTaskLoss()}
-        metrics={model.output[0].name.split("/")[0]:accuracy}
-        model_handler.compile(model, run_eagerly=False, transfer=True, loss=loss, metrics=metrics, lr=lr)
-    else:
-        model_handler.compile(model, run_eagerly=True, transfer=False, lr=lr)
-    train(dataset, model, "finetuned_"+model_name, model_handler, num_epochs, callbacks=None, augment=True, n_classes=num_classes, sampling_ratio=sampling_ratio, use_dali=use_dali, save_dir=save_dir)
-    
+def transfer_learning_(model_path, model_name, config_path, lr=0.1): 
+    silence_tensorflow()
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
+    hvd.init()
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices) > 0:
+        for i, p in enumerate(physical_devices):
+            tf.config.experimental.set_memory_growth(
+                physical_devices[i], True
+                )
+        tf.config.set_visible_devices(physical_devices[hvd.local_rank()], 'GPU')
+    tf.random.set_seed(2)
+    random.seed(1234)
+    np.random.seed(1234)
+    model_handler = get_handler(model_name)
 
-def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1, lr=None):
+    dirname = os.path.dirname(model_path)
+    basename = os.path.splitext(os.path.basename(model_path))[0] # ignore gated_ 
+
+    temp_path = os.path.dirname(model_path)
+    with open(os.path.join(temp_path, "output_idx.pickle"), "rb") as f:
+        output_idx = pickle.load(f)
+    with open(os.path.join(temp_path, "output_map.pickle"), "rb") as f:
+        output_map = pickle.load(f)
+
+    with open(config_path, 'r') as stream:
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            sys.exit(1)
+
+    batch_size = model_handler.get_batch_size(config["dataset"])
+    custom_objects = {
+        "SimplePruningGate":SimplePruningGate,
+        "StopGradientLayer":StopGradientLayer
+    }
+
+    model = tf.keras.models.load_model(model_path, custom_objects)
+
+    if config["training_conf"]["use_amp"]:
+        tf.keras.backend.set_floatx("float16")
+        from tensorflow.keras import mixed_precision
+        mixed_precision.set_global_policy('mixed_float16')
+        model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects)
+
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+
+    if "training_conf" in config and config["training_conf"]["grad_accum_steps"] > 1:
+        model_builder = lambda x, y: GAModel(
+            config["training_conf"]["use_amp"],
+            config["training_conf"]["hvd_fp16_compression"],
+            config["training_conf"]["grad_clip_norm"],
+            config["training_conf"]["grad_accum_steps"],
+            x, y
+            )
+    else:
+        model_builder = None
+
+    model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0, model_builder=model_builder)
+
+    if "training_conf" in config:
+        tconf = config["training_conf"]
+        tconf["mode"] = "distillation"
+    else:
+        tconf = None
+
+    train(
+        config["dataset"],
+        model_,
+        "finetuned_"+basename,
+        model_handler,
+        config["num_epochs"],
+        augment=True,
+        n_classes=config["num_classes"],
+        sampling_ratio=config["sampling_ratio"],
+        save_dir=dirname,
+        conf=tconf)
+
+    if hvd.size() > 1 and hvd.local_rank() == 0:
+        student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix="ignore")
+
+
+def transfer_learning(dataset, mh, model_name, model_handler, config_path, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1, lr=None, model_builder=None, training_conf=None):
     loss = {mh.model.layers[-1].name:BespokeTaskLoss()}
     metrics={mh.model.layers[-1].name:accuracy}
     for n in mh.nodes:
@@ -131,6 +220,10 @@ def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None,
         trainable_nodes = [n for n in mh.trainable_nodes]
     else:
         trainable_nodes = [n for n in mh.trainable_nodes if filter_(n)]
+
+    # sort trainable_nodes by id
+    trainable_nodes = sorted(trainable_nodes, key=lambda x: x.id_)
+
     to_remove = []
     while len(trainable_nodes) > 0:
         cnt = num_submodels_per_bunch 
@@ -140,7 +233,9 @@ def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None,
                 cnt = num_submodels_per_bunch 
 
             tf.keras.backend.clear_session()
-            print("Now training ... %d" % len(trainable_nodes))
+            if hvd.rank() == 0:
+                print("Now training ... %d" % len(trainable_nodes))
+
             try:
                 targets = []
                 for i in range(len(trainable_nodes)):
@@ -163,8 +258,31 @@ def transfer_learning(dataset, mh, model_handler, target_dir=None, filter_=None,
 
             try:
                 house, output_idx, output_map = mh.make_train_model(targets, scale=1.0)
-                model_handler.compile(house, run_eagerly=True, transfer=True, loss=loss, metrics=metrics, lr=lr)
-                train(dataset, house, "test", model_handler, num_epochs, callbacks=None, augment=True, exclude_val=True, n_classes=num_classes, sampling_ratio=sampling_ratio)
+                if training_conf is None:
+                    model_handler.compile(house, run_eagerly=False, transfer=True, loss=loss, metrics=metrics, lr=lr)
+
+                #with tempfile.TemporaryDirectory() as dirpath:
+                dirpath = "test"
+                B.save_transfering_model(dirpath, house, output_idx, output_map)
+
+                """
+                print(subprocess.run([
+                    f"CUDA_VISIBLE_DEVICES=0,1,2 horovodrun -np 3 python run.py --model_path {os.path.join(dirpath, 'model.h5')} --mode finetune --trmode --model_name {model_name} --sampling_ratio 1.0 --num_epochs {num_epochs} --config {config_path} --postfix _ignore"
+                ], shell=True))
+                """
+                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=3, use_mpi=True)
+
+                if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
+                    raise Exception("err")
+                else:
+                    # load and transfer model.
+                    trmodel = tf.keras.models.load_model(os.path.join(dirpath, f"finetuned_studentignore.h5"))
+                    for layer in house.layers:
+                        if len(layer.get_weights()) > 0:
+                            layer.set_weights(trmodel.get_layer(layer.name).get_weights())
+
+                # call house
+                # train(dataset, house, "test", model_handler, num_epochs, augment=True, exclude_val=True, n_classes=num_classes, sampling_ratio=sampling_ratio, conf=training_conf)
 
                 del house, output_idx, output_map
                 import gc
@@ -219,9 +337,9 @@ def run():
     parser.add_argument('--alter_ratio', type=float, default=1.0, help='model')
     parser.add_argument('--metric', type=str, default="flops", help='model')
     parser.add_argument('--teacher_path', type=str, default=None, help='model')
+    parser.add_argument('--trmode', action='store_true', help="for transfer learning")
     parser.add_argument('--overwrite', action='store_true')
     parser.add_argument('--init', action='store_true')
-    parser.add_argument('--use_dali', action='store_true')
     overriding_params = [
         ("sampling_ratio", float),
         ("lr", float),
@@ -236,16 +354,11 @@ def run():
         ("num_submodels_per_bunch", int),
         ("num_samples_for_profiling", int),
         ("num_epochs", int),
-        ("num_approx", int)
+        ("num_approx", int),
     ]
     for name, type_ in overriding_params:
         parser.add_argument('--'+name, type=type_, default=None, help="method")
     args = parser.parse_args()
-
-    if args.use_dali:
-        tf.compat.v1.disable_eager_execution()
-    else:
-        tf.compat.v1.enable_eager_execution()
 
     model_handler = get_handler(args.model_name)
 
@@ -275,7 +388,8 @@ def run():
                 config[key] = config[key] == "true"
             if getattr(args, key) is not None:
                 config[key] = getattr(args, key)
-                print("%s ---> %s" % (key, str(config[key])))
+                if hvd.rank() == 0:
+                    print("%s ---> %s" % (key, str(config[key])))
     # debug
     for key, type_ in overriding_params:
         assert key in config
@@ -335,7 +449,7 @@ def run():
     elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
         mh = ModelHouse(None, custom_objects=custom_objects)
         mh.load(args.source_dir)
- 
+     
     # Build if necessary
     filter_ = None
     if args.mode == "build":
@@ -369,6 +483,19 @@ def run():
     else:
         use_tl = False
 
+    if args.mode in ["transfer_learning", "finetune"] or use_tl:
+        if "training_conf" in config and config["training_conf"]["grad_accum_steps"] > 1:
+            model_builder = lambda x, y: GAModel(
+                config["training_conf"]["use_amp"],
+                config["training_conf"]["hvd_fp16_compression"],
+                config["training_conf"]["grad_clip_norm"],
+                config["training_conf"]["grad_accum_steps"],
+                x, y
+                )
+        else:
+            model_builder = None
+
+    batch_size = model_handler.get_batch_size(config["dataset"])
     # Transfer learning
     if use_tl or args.mode == "transfer_learning":
         assert args.target_dir is not None
@@ -383,20 +510,23 @@ def run():
         transfer_learning(
             config["dataset"],
             mh,
+            args.model_name,
             model_handler,
+            args.config,
             target_dir=args.target_dir,
             num_submodels_per_bunch=config["num_submodels_per_bunch"],
             num_epochs=config["num_epochs"],
             num_classes=config["num_classes"],
             sampling_ratio=config["sampling_ratio"],
             filter_=filter_,
-            lr=args.lr
+            lr=args.lr,
+            training_conf=config["training_conf"]
         )
         tl_time_t2 = time.time()
         running_time["transfer_learning_time"].append(tl_time_t2 - tl_time_t1)
         if args.mode == "approx":
             profile_time_t1 = time.time()
-            train_data_generator, _, _ = load_data(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
+            (train_data_generator, _, _), (iters, iters_val) = load_dataset(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
             sample_inputs = []
             for x,y in train_data_generator:
                 sample_inputs.append(x)
@@ -406,12 +536,14 @@ def run():
             mh.profile()
             profile_time_t2 = time.time()
             running_time["profile_time"].append(profile_time_t2 - profile_time_t1)
+
         mh.save(args.target_dir)
         with open(os.path.join(args.target_dir, "running_time.log"), "w") as file_:
             json.dump(running_time, file_)
 
     elif args.mode == "test": # Test
-        _, _, test_data_generator = load_data(
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+        (_, _, test_data_generator), (iters, iters_val) = load_dataset(
             config["dataset"],
             model_handler,
             sampling_ratio=1.0,
@@ -421,14 +553,40 @@ def run():
         print("Validation result: %f" % ret)
 
     elif args.mode == "finetune": # Test
+
         finetune_time_t1 = time.time()
         # model must be a gated model
         dirname = os.path.dirname(args.model_path)
         basename = os.path.splitext(os.path.basename(args.model_path))[0] # ignore gated_ 
         if args.init:
             model = tf.keras.models.clone_model(model)
+
+        distill_set = set()
+        if args.teacher_path is not None:
+            ex_map_filepath = os.path.join(dirname, basename+".map")
+            with open(ex_map_filepath, "r") as map_file:
+                ex_maps = json.load(map_file)
+
+            for locs in ex_maps:
+                for loc in locs[1]:
+                    distill_set.add(loc[0])
+                    distill_set.add(loc[1])
+
+        if config["training_conf"]["use_amp"]:
+            tf.keras.backend.set_floatx("float16")
+            from tensorflow.keras import mixed_precision
+            mixed_precision.set_global_policy('mixed_float16')
+            model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
+
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+
+        distil_loc = None
         if args.teacher_path is not None:
             teacher = tf.keras.models.load_model(args.teacher_path)
+
+            if config["training_conf"]["use_amp"]:
+                teacher = change_dtype(teacher, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
+
             ex_map_filepath = os.path.join(dirname, basename+".map")
             with open(ex_map_filepath, "r") as map_file:
                 ex_maps = json.load(map_file)
@@ -438,28 +596,51 @@ def run():
                 for loc in locs[1]:
                     distil_loc.append((loc[0], loc[1]))
 
-            model_ = B.make_distiller(model, teacher, distil_loc, scale=config["dloss_scale"])
+            model_ = B.make_distiller(model, teacher, distil_loc, scale=config["dloss_scale"], model_builder=model_builder)
             distillation = True
+
+        elif args.trmode:
+
+            temp_path = os.path.dirname(args.model_path)
+            with open(os.path.join(temp_path, "output_idx.pickle"), "rb") as f:
+                output_idx = pickle.load(f)
+            with open(os.path.join(temp_path, "output_map.pickle"), "rb") as f:
+                output_map = pickle.load(f)
+
+            model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0, model_builder=model_builder)
+            distillation = True
+
         else:
             model_ = model
             distillation = False
             for layer in model.layers:
                 layer.trainable = True
-                #if layer.__class__ == SimplePruningGate:
-                #    layer.trainable = False
 
-        finetune(
+            if model_builder is not None:
+                model_ = model_builder(model_.inputs, model_.outputs)
+
+        if "training_conf" in config:
+            tconf = config["training_conf"]
+        else:
+            tconf = None
+
+        if tconf is not None and not distillation:
+            tconf["mode"] = "finetune"
+        elif tconf is not None and distillation:
+            tconf["mode"] = "distillation"
+
+        train(
             config["dataset"],
             model_,
-            basename,
+            "finetuned_"+basename,
             model_handler,
             config["num_epochs"],
-            config["num_classes"],
+            augment=True,
+            n_classes=config["num_classes"],
             sampling_ratio=config["sampling_ratio"],
-            distillation=distillation,
-            use_dali=args.use_dali,
             save_dir=dirname,
-            lr=args.lr)
+            conf=tconf)
+
         filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
         finetune_time_t2 = time.time()
         running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
@@ -497,7 +678,7 @@ def run():
         assert args.target_dir is not None
         for n in mh.nodes:
             n.sleep() # to_cpu 
-        train_data_generator, _, _ = load_data(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
+        (train_data_generator, _, _), (iters, iters_val) = load_dataset(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
         sample_inputs = []
         for x,y in train_data_generator:
             sample_inputs.append(x)
