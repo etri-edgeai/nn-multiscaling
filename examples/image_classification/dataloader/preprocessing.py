@@ -291,7 +291,7 @@ def preprocess_for_predict(
 
 
 def preprocess_for_eval(
-    image_bytes: tf.Tensor,
+    images: tf.Tensor,
     image_size: int = IMAGE_SIZE,
     num_channels: int = 3,
     mean_subtract: bool = False,
@@ -311,13 +311,38 @@ def preprocess_for_eval(
   Returns:
     A preprocessed and normalized image `Tensor`.
   """
-  images = decode_and_center_crop(image_bytes, image_size)
-  images = tf.reshape(images, [image_size, image_size, num_channels])
+  #images = decode_and_center_crop(image_bytes, image_size)
+  #images = tf.reshape(images, [image_size, image_size, num_channels])
+  """
+  images = tf.io.decode_image(
+      image_bytes,
+      channels=3,
+      dtype=tf.dtypes.uint8,
+      name=None,
+      expand_animations=True
+  )
+  """
 
-  if mean_subtract:
-    images = mean_image_subtraction(image_bytes=images, means=MEAN_RGB)
-  if standardize:
-    images = standardize_image(image_bytes=images, stddev=STDDEV_RGB)
+  """
+  images = tf.io.decode_jpeg(
+      image_bytes,
+      channels=3,
+      ratio=1,
+      fancy_upscaling=True,
+      try_recover_truncated=False,
+      acceptable_fraction=1,
+      dct_method='',
+      name=None
+  )"""
+  #images = tf.keras.preprocessing.image.smart_resize(images, [256, 256], interpolation='bicubic')
+  #images = _central_crop([images], 224, 224)[0]
+
+  images = center_crop_and_resize(images, image_size)
+
+  #if mean_subtract:
+  #  images = mean_image_subtraction(image_bytes=images, means=MEAN_RGB)
+  #if standardize:
+  #  images = standardize_image(image_bytes=images, stddev=STDDEV_RGB)
   if dtype is not None:
     images = tf.image.convert_image_dtype(images, dtype=dtype)
   return images
@@ -367,8 +392,89 @@ def build_eval_dataset(filenames: List[Text],
 
   return dataset
 
+def _central_crop(image_list, crop_height, crop_width):
+  """Performs central crops of the given image list.
 
-def preprocess_for_train(image_bytes: tf.Tensor,
+  Args:
+    image_list: a list of image tensors of the same dimension but possibly
+      varying channel.
+    crop_height: the height of the image following the crop.
+    crop_width: the width of the image following the crop.
+
+  Returns:
+    the list of cropped images.
+  """
+  outputs = []
+  for image in image_list:
+    image_height = tf.shape(image)[0]
+    image_width = tf.shape(image)[1]
+
+    offset_height = (image_height - crop_height) / 2
+    offset_width = (image_width - crop_width) / 2
+
+    outputs.append(_crop(image, offset_height, offset_width,
+                         crop_height, crop_width))
+  return outputs
+
+
+def _crop(image, offset_height, offset_width, crop_height, crop_width):
+  """Crops the given image using the provided offsets and sizes.
+
+  Note that the method doesn't assume we know the input image size but it does
+  assume we know the input image rank.
+
+  Args:
+    image: an image of shape [height, width, channels].
+    offset_height: a scalar tensor indicating the height offset.
+    offset_width: a scalar tensor indicating the width offset.
+    crop_height: the height of the cropped image.
+    crop_width: the width of the cropped image.
+
+  Returns:
+    the cropped (and resized) image.
+
+  Raises:
+    InvalidArgumentError: if the rank is not 3 or if the image dimensions are
+      less than the crop size.
+  """
+  original_shape = tf.shape(image)
+
+  rank_assertion = tf.Assert(
+      tf.equal(tf.rank(image), 3),
+      ['Rank of image must be equal to 3.'])
+  with tf.control_dependencies([rank_assertion]):
+    cropped_shape = tf.stack([crop_height, crop_width, original_shape[2]])
+
+  size_assertion = tf.Assert(
+      tf.logical_and(
+          tf.greater_equal(original_shape[0], crop_height),
+          tf.greater_equal(original_shape[1], crop_width)),
+      ['Crop size greater than the image size.'])
+
+  offsets = tf.cast(tf.stack([offset_height, offset_width, 0]), dtype=tf.int32)
+
+  # Use tf.slice instead of crop_to_bounding box as it accepts tensors to
+  # define the crop size.
+  with tf.control_dependencies([size_assertion]):
+    image = tf.slice(image, offsets, cropped_shape)
+  return tf.reshape(image, cropped_shape)
+
+def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
+    shape = tf.shape(image)
+    h = shape[0]
+    w = shape[1]
+
+    padded_center_crop_size = tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
+    offset_height = ((h - padded_center_crop_size) + 1) // 2
+    offset_width = ((w - padded_center_crop_size) + 1) // 2
+
+    image_crop = image[offset_height:padded_center_crop_size + offset_height,
+                       offset_width:padded_center_crop_size + offset_width]
+
+    resized_image = tf.keras.preprocessing.image.smart_resize(image, [image_size, image_size], interpolation=interpolation)
+    return resized_image
+
+def preprocess_for_train(images: tf.Tensor,
                          image_size: int = IMAGE_SIZE,
                          augmenter: Optional[augment.ImageAugment] = None,
                          mean_subtract: bool = False,
@@ -388,8 +494,22 @@ def preprocess_for_train(image_bytes: tf.Tensor,
   Returns:
     A preprocessed and normalized image `Tensor`.
   """
-  images = decode_crop_and_flip(image_bytes=image_bytes)
-  images = resize_image(images, height=image_size, width=image_size)
+  #images = decode_crop_and_flip(image_bytes=image_bytes)
+  #images = resize_image(images, height=image_size, width=image_size)
+  """
+  images = tf.io.decode_image(
+      image_bytes,
+      channels=3,
+      dtype=tf.dtypes.uint8,
+      name=None,
+      expand_animations=True
+  ) 
+  """
+  #images = tf.keras.preprocessing.image.smart_resize(images, [256, 256], interpolation='bicubic')
+  #images = _central_crop([images], 224, 224)[0]
+
+  images = center_crop_and_resize(images, image_size)
+
   if mean_subtract:
     images = mean_image_subtraction(image_bytes=images, means=MEAN_RGB)
   if standardize:

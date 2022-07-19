@@ -15,10 +15,10 @@
 import sys
 
 import tensorflow as tf
-import horovod.tensorflow.keras as hvd
+#import horovod.tensorflow.keras as hvd
 
-from nvidia import dali
-import nvidia.dali.plugin.tf as dali_tf
+#from nvidia import dali
+#import nvidia.dali.plugin.tf as dali_tf
 import numpy as np
 
 class DaliPipeline(dali.pipeline.Pipeline):
