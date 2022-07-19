@@ -209,6 +209,12 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
 
 
 def transfer_learning(dataset, mh, model_name, model_handler, config_path, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1, lr=None, model_builder=None, training_conf=None):
+
+    custom_objects = {
+        "SimplePruningGate":SimplePruningGate,
+        "StopGradientLayer":StopGradientLayer
+    }
+
     loss = {mh.model.layers[-1].name:BespokeTaskLoss()}
     metrics={mh.model.layers[-1].name:accuracy}
     for n in mh.nodes:
@@ -276,7 +282,7 @@ def transfer_learning(dataset, mh, model_name, model_handler, config_path, targe
                     raise Exception("err")
                 else:
                     # load and transfer model.
-                    trmodel = tf.keras.models.load_model(os.path.join(dirpath, f"finetuned_studentignore.h5"))
+                    trmodel = tf.keras.models.load_model(os.path.join(dirpath, f"finetuned_studentignore.h5"), custom_objects=custom_objects)
                     for layer in house.layers:
                         if len(layer.get_weights()) > 0:
                             layer.set_weights(trmodel.get_layer(layer.name).get_weights())
