@@ -129,6 +129,7 @@ class TFParser(common.Parser):
         stops = [
             layer.name for layer in self._parser.model.layers if layer.__class__ in STOP_POINTS
         ]
+
         stops = sorted(stops, key=lambda x: self._trank[x])
         nets = []
         if history is None:
@@ -245,7 +246,7 @@ class TFParser(common.Parser):
                 if type(subnet[0].input) == list:
                     continue
 
-                scales = [0.25, 0.375, 0.5, 0.625, 0.75]
+                scales = [0.125, 0.25, 0.375, 0.5, 0.625]
                 pruning_cnt = len(scales)
                 giveup = False
                 while True:
