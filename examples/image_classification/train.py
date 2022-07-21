@@ -288,7 +288,8 @@ def train(
         pass
 
     if save_dir is not None and hvd.local_rank() == 0:
-        model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
+        #model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
+        model_name_ = '%s_model.best.h5' % (model_name+"_"+dataset)
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         filepath = os.path.join(save_dir, model_name_)
