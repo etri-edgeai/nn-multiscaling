@@ -109,6 +109,7 @@ def load_data_nvidia(dataset, model_handler, sampling_ratio=1.0, training_augmen
         batch_size = model_handler.get_batch_size(dataset)
 
     augmenter = "autoaugment"
+    augmenter = None
     augmenter_params = {}
     #augmenter_params["cutout_const"] = None
     #augmenter_params["translate_const"] = None
@@ -219,33 +220,6 @@ def train(
     if callbacks is None:
         callbacks = []
 
-    if save_dir is not None and hvd.local_rank() == 0:
-        model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
-        filepath = os.path.join(save_dir, model_name_)
-
-        if conf is not None and conf["moving_average_decay"] > 0:
-            mchk = custom_callbacks.AverageModelCheckpoint(update_weights=False,
-                                          filepath=filepath,
-                                          verbose=0,
-                                          save_best_only=True,
-                                          save_weights_only=False,
-                                          mode="auto",
-                                          save_freq="epoch")
-        else:
-            mchk = keras.callbacks.ModelCheckpoint(
-                filepath=filepath,
-                monitor="val_accuracy",
-                verbose=0,
-                save_best_only=True,
-                save_weights_only=False,
-                mode="auto",
-                save_freq="epoch",
-                options=None,
-            )
-            callbacks.append(mchk)
-
     if conf is not None:
         callbacks.append(hvd.callbacks.BroadcastGlobalVariablesCallback(0))
         callbacks.append(hvd.callbacks.MetricAverageCallback())
@@ -260,7 +234,10 @@ def train(
             'boundaries': None,
             'multipliers': None,
             'scale_by_batch_size': 1./float(batch_size),
-            'staircase': True
+            'staircase': True,
+            't_mul': conf["t_mul"],
+            'm_mul': conf["m_mul"],
+            'alpha': conf['alpha']
         }
 
         learning_rate = optimizer_factory.build_learning_rate(
@@ -309,6 +286,33 @@ def train(
     else:
         # model was already compiled
         pass
+
+    if save_dir is not None and hvd.local_rank() == 0:
+        model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
+        filepath = os.path.join(save_dir, model_name_)
+
+        if conf is not None and conf["moving_average_decay"] > 0:
+            mchk = custom_callbacks.AverageModelCheckpoint(update_weights=False,
+                                          filepath=filepath,
+                                          verbose=0,
+                                          save_best_only=True,
+                                          save_weights_only=False,
+                                          mode="auto",
+                                          save_freq="epoch")
+        else:
+            mchk = keras.callbacks.ModelCheckpoint(
+                filepath=filepath,
+                monitor="val_accuracy",
+                verbose=0,
+                save_best_only=True,
+                save_weights_only=False,
+                mode="auto",
+                save_freq="epoch",
+                options=None,
+            )
+        callbacks.append(mchk)
 
     if exclude_val:
         model_history = model.fit(train_data_generator,
