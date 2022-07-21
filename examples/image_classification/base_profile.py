@@ -17,19 +17,22 @@ from profile import measure
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
 
-dir_ = "experiments/efnet/cifar100_200_build_approx"
-model_file = os.path.join(dir_, "base.h5")
+#dir_ = "experiments/imagenet_efnetb2_200_1_approx"
+#model_file = os.path.join(dir_, "base.h5")
 
 from keras_flops import get_flops
-model = tf.keras.models.load_model(model_file)
+#model = tf.keras.models.load_model(model_file)
 
-#from efficientnet.tfkeras import EfficientNetB0
-#model = EfficientNetB0(weights='imagenet')
-#from tensorflow.keras.applications import EfficientNetB0
-#model = tf.keras.applications.efficientnet.EfficientNetB0(
-#    include_top=True, weights='imagenet', input_tensor=None, input_shape=(224, 224, 3), pooling=None, classes=1000,
-#    classifier_activation='softmax')
+from efficientnet.tfkeras import EfficientNetB0
+model = EfficientNetB0(weights='imagenet')
+from tensorflow.keras.applications import EfficientNetB2
+model = tf.keras.applications.efficientnet.EfficientNetB2(
+    include_top=True, weights='imagenet', input_tensor=None, input_shape=(260, 260, 3), pooling=None, classes=1000,
+    classifier_activation='softmax')
 
+print(get_flops(model))
+
+xxx
 # remove front
 flag = False
 for layer in model.layers:
@@ -47,7 +50,6 @@ else:
 
 print(model.summary())
 
-print(get_flops(model))
 #print(measure(model, mode="trt"))
 #print(measure(model, mode="gpu"))
 #print(measure(model, mode="gpu", batch_size=1))

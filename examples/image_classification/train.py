@@ -214,6 +214,7 @@ def train(
         data_gen, iters_info = dataset
     train_data_generator, valid_data_generator, test_data_generator = data_gen
     iters, iters_val = iters_info
+    iters = int(iters * sampling_ratio)
 
     if callbacks is None:
         callbacks = []
@@ -273,6 +274,7 @@ def train(
             'decay': conf["decay"],
             'epsilon': conf["epsilon"],
             'momentum': conf["momentum"],
+            'lookahead': conf["lookahead"],
             'moving_average_decay': conf["moving_average_decay"],
             'nesterov': conf["nesterov"],
             'beta_1': conf["beta_1"],
