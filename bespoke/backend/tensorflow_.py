@@ -121,7 +121,7 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None):
+        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None, use_adapter=False):
 
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
@@ -137,7 +137,6 @@ class TFParser(common.Parser):
         for i in range(num):
             layers_ = []
             num_try = 0
-            target_shapes_ = None
             subnet = None
             while True:
                 if num_try > config.MAX_TRY:
@@ -151,7 +150,7 @@ class TFParser(common.Parser):
                     if type(self._model.get_layer(self._rtrank[left]).input) == list:
                         continue
                     left_shape = self._model.get_layer(self._rtrank[left]).input.shape
-                    if not input_shape[-1] <= left_shape[-1]:
+                    if (not input_shape[-1] <= left_shape[-1]) or (not use_adapter):
                         continue
 
                 if not use_random_walk:
@@ -216,7 +215,7 @@ class TFParser(common.Parser):
                     target_cchange = right_shape[-1] / left_shape[-1]
 
                     if not(spatial_change == target_schange and\
-                        input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1] and\
+                        ((input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1]) or use_adapter) and\
                         channel_change == target_cchange):
                         continue
 
@@ -229,8 +228,9 @@ class TFParser(common.Parser):
                     continue
 
                 # Assumption: # of inputs is 1.
-                target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
-                subnet = self._parser.get_subnet(layers_, self._model, target_shapes_)
+                in_target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
+                out_target_shapes_ = [target_shapes[1]] if target_shapes is not None else None
+                subnet = self._parser.get_subnet(layers_, self._model, in_target_shapes_, out_target_shapes_, use_adapter=use_adapter)
                 if use_prefix:
                     prefix = subnet[0].name+"_"
                     subnet_ = [None for _ in range(3)]
@@ -246,7 +246,7 @@ class TFParser(common.Parser):
                 if type(subnet[0].input) == list:
                     continue
 
-                scales = [0.125, 0.25, 0.375, 0.5, 0.625]
+                scales = [0.1, 0.125, 0.25, 0.375, 0.5, 0.625]
                 pruning_cnt = len(scales)
                 giveup = False
                 while True:

@@ -9,7 +9,8 @@ models:
   - EfficientNetV2S
   - EfficientNetV2B2
   - EfficientNetB3
-  - EfficientNetB4
+  - MobileNetV3Small
+  - ResNetRS152
 
 lr: 0.001
 astep_ratio: 0.1
@@ -30,10 +31,10 @@ training_conf:
   augmenter_name: "autoaugment"
   use_amp: true
   lr_name: "cosine_restart"
-  initial_lr: 0.001
-  t_mul: 0.3
-  m_mul: 0.5
-  alpha: 1.0e-6
+  initial_lr: 0.0001
+  t_mul: 2.0
+  m_mul: 1.0
+  alpha: 1.0e-7
   decay_epochs: 5.0
   decay_rate: 0.97
   warmup_epochs: 5

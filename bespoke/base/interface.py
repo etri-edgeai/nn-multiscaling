@@ -112,7 +112,7 @@ class ModelHouse(object):
             print(len(nodes_))
             n = np.random.choice(self._nodes)
             alters = gen_.generate(
-                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio)
+                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n

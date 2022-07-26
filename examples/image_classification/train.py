@@ -109,7 +109,6 @@ def load_data_nvidia(dataset, model_handler, sampling_ratio=1.0, training_augmen
         batch_size = model_handler.get_batch_size(dataset)
 
     augmenter = "autoaugment"
-    augmenter = None
     augmenter_params = {}
     #augmenter_params["cutout_const"] = None
     #augmenter_params["translate_const"] = None
@@ -276,8 +275,10 @@ def train(
             loss = {model.output[0].name.split("/")[0]:BespokeTaskLoss()}
             metrics={model.output[0].name.split("/")[0]:accuracy}
             model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=False, experimental_run_tf_function=False)
+            metric = "val_probs_accuracy"
         else:
             model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=False, experimental_run_tf_function=False)
+            metric = "val_accuracy"
 
         if conf["moving_average_decay"] > 0:
             callbacks.append(
@@ -288,8 +289,8 @@ def train(
         pass
 
     if save_dir is not None and hvd.local_rank() == 0:
-        #model_name_ = '%s_model.{epoch:03d}.h5' % (model_name+"_"+dataset)
-        model_name_ = '%s_model.best.h5' % (model_name+"_"+dataset)
+        #model_name_ = '%s_model.{epoch:03d}.h5' % (model_name)
+        model_name_ = '%s_model.best.h5' % (model_name)
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         filepath = os.path.join(save_dir, model_name_)
@@ -297,15 +298,20 @@ def train(
         if conf is not None and conf["moving_average_decay"] > 0:
             mchk = custom_callbacks.AverageModelCheckpoint(update_weights=False,
                                           filepath=filepath,
+                                          monitor=metric,
                                           verbose=0,
                                           save_best_only=True,
                                           save_weights_only=False,
                                           mode="auto",
                                           save_freq="epoch")
+            func = model.save
+            model.save = lambda filepath, overwrite=True, options=None:\
+                func(filepath, overwrite=overwrite, include_optimizer=False, options=options)
+
         else:
             mchk = keras.callbacks.ModelCheckpoint(
                 filepath=filepath,
-                monitor="val_accuracy",
+                monitor=metric,
                 verbose=0,
                 save_best_only=True,
                 save_weights_only=False,
