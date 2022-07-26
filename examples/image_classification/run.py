@@ -435,7 +435,7 @@ def run():
         "StopGradientLayer":StopGradientLayer
     }
     if args.model_path is not None:
-        if config["dataset"] == "imagenet2012" and args.mode not in ["finetune", "cut"]:
+        if config["dataset"] == "imagenet2012" and args.mode not in ["finetune", "cut", "test"]:
             model_class = None
             for model_ in MODELS:
                 if args.model_path in model_.__name__:
@@ -647,7 +647,8 @@ def run():
             save_dir=dirname,
             conf=tconf)
 
-        filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
+        if hvd.rank() == 0:
+            filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
         finetune_time_t2 = time.time()
         running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
         running_time_dump(filepath, running_time)
