@@ -5,7 +5,7 @@ from tensorflow.keras import backend
 
 class BespokeTaskLoss(losses.Loss):
 
-    def __init__(self):
+    def __init__(self, label_smoothing=0.1):
         super(BespokeTaskLoss, self).__init__()
         self.mute = False
 
@@ -13,7 +13,7 @@ class BespokeTaskLoss(losses.Loss):
         if self.mute:
             return 0.0 * losses.categorical_crossentropy(y_true, y_pred)
         else:
-            return losses.categorical_crossentropy(y_true, y_pred, label_smoothing=0.1)
+            return losses.categorical_crossentropy(y_true, y_pred, label_smoothing=label_smoothing)
 
 def accuracy(y_true, y_pred):
   """Calculates how often predictions match one-hot labels.
