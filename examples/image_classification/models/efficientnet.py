@@ -21,7 +21,7 @@ else:
 height = 224
 width = 224
 input_shape = (height, width, 3) # network input
-batch_size = 16
+batch_size = 32
 
 def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
     shape = tf.shape(image)
@@ -47,19 +47,17 @@ def get_batch_size(dataset):
 def get_name():
     return "efnet"
 
-def preprocess_func(img, shape):
-
-    img = tf.keras.applications.imagenet_utils.preprocess_input(
-        img, data_format=None, mode='torch'
-        )
-
+def data_preprocess_func(img, shape):
+    img = center_crop_and_resize(img, height)
     #img = preprocess_input(img)
     return img
 
-def parse_fn(example_serialized):
-    image = example_serialized["image"]
-    image = center_crop_and_resize(image, width)
-    return {"image": image, "label":example_serialized["label"]}
+def model_preprocess_func(img, shape):
+    img = tf.keras.applications.imagenet_utils.preprocess_input(
+        img, data_format=None, mode='torch'
+        )
+    #img = preprocess_input(img)
+    return img
 
 def get_model(dataset, n_classes=100):
     if dataset == "imagenet2012":
