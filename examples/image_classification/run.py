@@ -511,7 +511,15 @@ def run():
                 if n.net.is_sleeping():
                     n.net.wakeup()
                 if "alter" in n.tag:
+                    gate_weights = {}
+                    for layer in n.net.model.layers:
+                        if type(layer) == SimplePruningGate:
+                            gate_weights[layer.name] = layer.gates.numpy() 
                     n.net.model = tf.keras.models.clone_model(n.net.model)
+                    for layer in n.net.model.layers:
+                        if type(layer) == SimplePruningGate:
+                            layer.gates.assign(gate_weights[layer.name])
+
             n.sleep() # to_cpu 
         transfer_learning(
             config["dataset"],
@@ -565,7 +573,15 @@ def run():
         dirname = os.path.dirname(args.model_path)
         basename = os.path.splitext(os.path.basename(args.model_path))[0] # ignore gated_ 
         if args.init:
+            # backup gate
+            gate_weights = {}
+            for layer in model.layers:
+                if type(layer) == SimplePruningGate:
+                    gate_weights[layer.name] = layer.gates.numpy() 
             model = tf.keras.models.clone_model(model)
+            for layer in model.layers:
+                if type(layer) == SimplePruningGate:
+                    layer.gates.assign(gate_weights[layer.name])
 
         distill_set = set()
         if args.teacher_path is not None:
