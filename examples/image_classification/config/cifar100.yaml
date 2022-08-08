@@ -11,7 +11,8 @@ models:
 lr: 0.001
 sampling_ratio: 1.0
 dloss_scale: 0.5
-memory_limit: 405168896
+#memory_limit: 405168896
+memory_limit: 0
 params_limit: 0
 step_ratio: 0.2 # ste
 astep_ratio: 0.1 # ste
@@ -19,8 +20,8 @@ batch_size_limit: 32 # for profiling
 num_partitions: 50
 num_imported_submodels: 50
 num_approx: 50
-num_submodels_per_bunch: 25
-num_samples_for_profiling: 30
+num_submodels_per_bunch: 100
+num_samples_for_profiling: 5
 num_epochs: 20
 
 training_conf:

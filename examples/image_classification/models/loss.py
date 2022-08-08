@@ -8,12 +8,13 @@ class BespokeTaskLoss(losses.Loss):
     def __init__(self, label_smoothing=0.1):
         super(BespokeTaskLoss, self).__init__()
         self.mute = False
+        self.label_smoothing = label_smoothing
 
     def call(self, y_true, y_pred):
         if self.mute:
             return 0.0 * losses.categorical_crossentropy(y_true, y_pred)
         else:
-            return losses.categorical_crossentropy(y_true, y_pred, label_smoothing=label_smoothing)
+            return losses.categorical_crossentropy(y_true, y_pred, label_smoothing=self.label_smoothing)
 
 def accuracy(y_true, y_pred):
   """Calculates how often predictions match one-hot labels.

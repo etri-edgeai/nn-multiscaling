@@ -1,6 +1,7 @@
 import json
 
 import tensorflow as tf
+from tensorflow import keras
 
 from dataloader.dataset_factory import *
 from models.custom import GAModel
@@ -34,6 +35,15 @@ def change_dtype_(model_dict, policy, distill_set=None):
 
 
 def change_dtype(model_, policy, distill_set=None, custom_objects=None):
+
+    if type(model_) == keras.Sequential:
+        input_layer = keras.layers.Input(batch_shape=model_.layers[0].input_shape, name="seq_input")
+        prev_layer = input_layer
+        for layer in model_.layers:
+            layer._inbound_nodes = []
+            prev_layer = layer(prev_layer)
+        model_ = keras.models.Model([input_layer], [prev_layer])
+
     model_backup = model_
     model_dict = json.loads(model_.to_json())
     change_dtype_(model_dict, policy, distill_set=distill_set)
@@ -52,9 +62,75 @@ def get_custom_objects():
     return custom_objects
 
 
-def add_augmentation(model, image_size, train_batch_size=32, do_mixup=False, do_cutmix=False, custom_objects=None):
+def remove_augmentation(model, custom_objects=None):
+    found = False
+    for l in model.layers:
+        if l.name == "mixup_weight":
+            found = True
+            break
+    if not found:
+        return model
+
+    model_dict = json.loads(model.to_json())
+
+    to_removed_names = []
+    to_removed = []
+    image_name = None
+    for layer in model_dict["config"]["layers"]:
+        if layer["class_name"] == "InputLayer" or layer["config"]["name"] == "input_lambda":
+            if "image" not in layer["config"]["name"]:
+                to_removed_names.append(layer["config"]["name"])
+                to_removed.append(layer)
+            else:
+                image_name = layer["config"]["name"]
+
+    for layer in model_dict["config"]["layers"]:
+        for inbound in layer["inbound_nodes"]:
+            if type(inbound[0]) == str:
+                if inbound[0] == "input_lambda":
+                    inbound[0] = image_name
+            else:
+                for ib in inbound:
+                    if ib[0] in to_removed_names: # input
+                        ib[0] = image_name
+
+    for r in to_removed:
+        model_dict["config"]["layers"].remove(r)
+    model_dict["config"]["input_layers"] = [[image_name, 0, 0]]
+
+    model_json = json.dumps(model_dict)
+    if custom_objects is None:
+        custom_objects = {}
+    model_ = tf.keras.models.model_from_json(model_json, custom_objects=custom_objects)
+
+    for layer in model.layers:
+        if layer.name in to_removed_names:
+            continue
+        model_.get_layer(layer.name).set_weights(layer.get_weights())
+
+    return model_
+
+
+def add_augmentation(model, image_size, train_batch_size=32, do_mixup=False, do_cutmix=False, custom_objects=None, update_batch_size=False):
+
+    found = False
+    for l in model.layers:
+        if l.name == "mixup_weight":
+            found = True
+            break
+    if found and not update_batch_size:
+        return model
+
+    if type(model) == keras.Sequential:
+        input_layer = keras.layers.Input(batch_shape=model.layers[0].input_shape, name="seq_input")
+        prev_layer = input_layer
+        for layer in model.layers:
+            layer._inbound_nodes = []
+            prev_layer = layer(prev_layer)
+        model = keras.models.Model([input_layer], [prev_layer])
 
     def cond_mixing(args):
+      from dataloader.dataset_factory import mixing_lite
       images,mixup_weights,cutmix_masks,is_tr_split = args
       return tf.cond(tf.keras.backend.equal(is_tr_split[0],0), 
                      lambda: images, # eval phase
@@ -78,26 +154,39 @@ def add_augmentation(model, image_size, train_batch_size=32, do_mixup=False, do_
 
     to_removed_names = []
     to_removed = []
-    for layer in model_dict["config"]["layers"]:
-        if layer["class_name"] == "InputLayer":
-            to_removed_names.append(layer["config"]["name"])
-            to_removed.append(layer)
+    if found and update_batch_size:
 
-    for layer in model_dict["config"]["layers"]:
-        for inbound in layer["inbound_nodes"]:
-            if type(inbound[0]) == str:
-                if inbound[0] in to_removed_names:
-                    inbound[0] = "input_lambda"
-            else:
-                for ib in inbound:
-                    if ib[0] in to_removed_names: # input
-                        ib[0] = "input_lambda"
+        new_layer = None
+        for layer in temp_model_dict["config"]["layers"]:
+            if layer["name"] == "input_lambda":
+                new_layer = layer
+                break
 
-    for r in to_removed:
-        model_dict["config"]["layers"].remove(r)
+        for layer in model_dict["config"]["layers"]:
+            if layer["name"] == "input_lambda":
+                layer["config"] = new_layer["config"] # replace
+    else:
 
-    model_dict["config"]["layers"] +=  temp_model_dict["config"]["layers"]
-    model_dict["config"]["input_layers"] = [[layer.name, 0, 0] for layer in inputs]
+        for layer in model_dict["config"]["layers"]:
+            if layer["class_name"] == "InputLayer":
+                to_removed_names.append(layer["config"]["name"])
+                to_removed.append(layer)
+
+        for layer in model_dict["config"]["layers"]:
+            for inbound in layer["inbound_nodes"]:
+                if type(inbound[0]) == str:
+                    if inbound[0] in to_removed_names:
+                        inbound[0] = "input_lambda"
+                else:
+                    for ib in inbound:
+                        if ib[0] in to_removed_names: # input
+                            ib[0] = "input_lambda"
+
+        for r in to_removed:
+            model_dict["config"]["layers"].remove(r)
+
+        model_dict["config"]["layers"] +=  temp_model_dict["config"]["layers"]
+        model_dict["config"]["input_layers"] = [[layer.name, 0, 0] for layer in inputs]
 
     model_json = json.dumps(model_dict)
     if custom_objects is None:
