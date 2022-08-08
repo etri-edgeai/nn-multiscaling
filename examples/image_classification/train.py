@@ -16,7 +16,7 @@ from utils import optimizer_factory
 
 from models.loss import BespokeTaskLoss, accuracy
 
-def load_data_nvidia(dataset, model_handler, sampling_ratio=1.0, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=1.0, mixup_alpha=0.8):
+def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=1.0, mixup_alpha=0.8):
 
     if dataset == "imagenet2012":
         data_dir = "tensorflow_datasets/imagenet2012/5.1.0_dali"
@@ -93,34 +93,28 @@ def load_data_nvidia(dataset, model_handler, sampling_ratio=1.0, training_augmen
 
     return [ builder.build() for builder in builders ]
 
-def load_dataset(dataset, model_handler, sampling_ratio=1.0, training_augment=True, n_classes=100):
+def load_dataset(dataset, model_handler, training_augment=True, n_classes=100):
 
     batch_size = model_handler.get_batch_size(dataset)
 
-    if dataset in ["imagenet2012", "cifar100", "caltech_birds2011", "oxford_iiit_pet"]:
-        train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=training_augment, n_classes=n_classes)
+    train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, training_augment=training_augment, n_classes=n_classes)
 
-        if dataset == "imagenet2012": 
-            num_train_examples = 1281167
-            num_val_examples = 50000
-        elif dataset == "cifar100":
-            num_train_examples = 50000
-            num_val_examples = 10000
-        elif dataset == "caltech_birds2011":
-            num_train_examples = 5994
-            num_val_examples = 5794
-        else:
-            num_train_examples = 3680
-            num_val_examples = 3669
-
-        iters = num_train_examples // (batch_size * hvd.size())
-        iters_val = num_val_examples // (batch_size * hvd.size())
-        test_data_generator = valid_data_generator
-
+    if dataset == "imagenet2012": 
+        num_train_examples = 1281167
+        num_val_examples = 50000
+    elif dataset == "cifar100":
+        num_train_examples = 50000
+        num_val_examples = 10000
+    elif dataset == "caltech_birds2011":
+        num_train_examples = 5994
+        num_val_examples = 5794
     else:
-        train_data_generator, valid_data_generator, test_data_generator = load_data(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=training_augment, n_classes=n_classes)
-        iters = len(train_data_generator)
-        iters_val = len(valid_data_generator)
+        num_train_examples = 3680
+        num_val_examples = 3669
+
+    iters = num_train_examples // (batch_size * hvd.size())
+    iters_val = num_val_examples // (batch_size * hvd.size())
+    test_data_generator = valid_data_generator
 
     return (train_data_generator, valid_data_generator, test_data_generator), (iters, iters_val)
 
@@ -141,7 +135,7 @@ def train(
     batch_size = model_handler.get_batch_size(dataset)
 
     if type(dataset) == str:
-        data_gen, iters_info = load_dataset(dataset, model_handler, sampling_ratio=sampling_ratio, training_augment=augment, n_classes=n_classes)
+        data_gen, iters_info = load_dataset(dataset, model_handler, training_augment=augment, n_classes=n_classes)
     else:
         data_gen, iters_info = dataset
     train_data_generator, valid_data_generator, test_data_generator = data_gen

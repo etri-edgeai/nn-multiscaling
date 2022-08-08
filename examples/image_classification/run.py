@@ -57,7 +57,8 @@ from bespoke import backend as B
 from models.loss import BespokeTaskLoss, accuracy
 from train import train, load_dataset
 from models.custom import GAModel
-from prep import add_augmentation, change_dtype, get_custom_objects
+from prep import add_augmentation, change_dtype, get_custom_objects, remove_augmentation
+from utils import optimizer_factory
 
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB2
 
@@ -80,6 +81,12 @@ MODELS = [
     tf.keras.applications.EfficientNetV2B1,
     tf.keras.applications.EfficientNetV2S
 ]
+
+custom_objects = {
+    "SimplePruningGate":SimplePruningGate,
+    "StopGradientLayer":StopGradientLayer,
+    "HvdMovingAverage":optimizer_factory.HvdMovingAverage
+}
 
 def get_handler(model_name):
     if model_name == "efnetb0":
@@ -127,7 +134,7 @@ def validate(model, test_data_gen, model_handler):
 
 def transfer_learning_(model_path, model_name, config_path, lr=0.1): 
     silence_tensorflow()
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3,4,5,6,7'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices) > 0:
@@ -158,11 +165,6 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
             sys.exit(1)
 
     batch_size = model_handler.get_batch_size(config["dataset"])
-    custom_objects = {
-        "SimplePruningGate":SimplePruningGate,
-        "StopGradientLayer":StopGradientLayer
-    }
-
     model = tf.keras.models.load_model(model_path, custom_objects)
 
     if config["training_conf"]["use_amp"]:
@@ -171,7 +173,7 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
         mixed_precision.set_global_policy('mixed_float16')
         model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects)
 
-    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
 
     if "training_conf" in config and config["training_conf"]["grad_accum_steps"] > 1:
         model_builder = lambda x, y: GAModel(
@@ -209,11 +211,6 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
 
 
 def transfer_learning(dataset, mh, model_name, model_handler, config_path, target_dir=None, filter_=None, num_submodels_per_bunch=25, num_epochs=3, num_classes=1000, sampling_ratio=0.1, lr=None, model_builder=None, training_conf=None):
-
-    custom_objects = {
-        "SimplePruningGate":SimplePruningGate,
-        "StopGradientLayer":StopGradientLayer
-    }
 
     loss = {mh.model.layers[-1].name:BespokeTaskLoss()}
     metrics={mh.model.layers[-1].name:accuracy}
@@ -276,7 +273,7 @@ def transfer_learning(dataset, mh, model_name, model_handler, config_path, targe
                     f"CUDA_VISIBLE_DEVICES=0,1,2 horovodrun -np 3 python run.py --model_path {os.path.join(dirpath, 'model.h5')} --mode finetune --trmode --model_name {model_name} --sampling_ratio 1.0 --num_epochs {num_epochs} --config {config_path} --postfix _ignore"
                 ], shell=True))
                 """
-                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=7, use_mpi=True)
+                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=3, use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
                     raise Exception("err")
@@ -430,10 +427,6 @@ def run():
             "profile_time":[]
         }
 
-    custom_objects = {
-        "SimplePruningGate":SimplePruningGate,
-        "StopGradientLayer":StopGradientLayer
-    }
     if args.model_path is not None:
         if config["dataset"] == "imagenet2012" and args.mode not in ["finetune", "cut", "test"]:
             model_class = None
@@ -447,15 +440,18 @@ def run():
     else:
         model = None
 
+    batch_size = model_handler.get_batch_size(config["dataset"])
     # Make a model house
     if args.mode == "build":
         assert args.target_dir is not None
         assert model is not None
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
         mh = ModelHouse(model)
     elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
         mh = ModelHouse(None, custom_objects=custom_objects)
         mh.load(args.source_dir)
-     
+        mh._model = add_augmentation(mh._model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
+
     # Build if necessary
     filter_ = None
     if args.mode == "build":
@@ -501,7 +497,6 @@ def run():
         else:
             model_builder = None
 
-    batch_size = model_handler.get_batch_size(config["dataset"])
     # Transfer learning
     if use_tl or args.mode == "transfer_learning":
         assert args.target_dir is not None
@@ -535,7 +530,7 @@ def run():
             (train_data_generator, _, _), (iters, iters_val) = load_dataset(config["dataset"], model_handler, training_augment=True, n_classes=config["num_classes"])
             sample_inputs = []
             for x,y in train_data_generator:
-                sample_inputs.append(x["image"])
+                sample_inputs.append(x)
                 if len(sample_inputs) > config["num_samples_for_profiling"]:
                     break
             mh.build_sample_data(sample_inputs)
@@ -552,7 +547,6 @@ def run():
         (_, _, test_data_generator), (iters, iters_val) = load_dataset(
             config["dataset"],
             model_handler,
-            sampling_ratio=1.0,
             training_augment=False,
             n_classes=config["num_classes"])
         ret = validate(model, test_data_generator, model_handler)

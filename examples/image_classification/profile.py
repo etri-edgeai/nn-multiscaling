@@ -5,6 +5,9 @@ import shutil
 import time
 from os import listdir
 from os.path import isfile, join
+from silence_tensorflow import silence_tensorflow
+silence_tensorflow()
+
 
 from timeit import default_timer as timer
 
@@ -16,6 +19,7 @@ random.seed(1234)
 import numpy as np
 np.random.seed(1234)
 import sys
+import argparse
 
 tf.config.experimental.set_synchronous_execution(True)
 tf.config.experimental.enable_op_determinism()
@@ -39,6 +43,14 @@ import onnxruntime as rt
 from bespoke.base.interface import ModelHouse
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from prep import remove_augmentation, add_augmentation
+
+from train import load_dataset
+custom_objects = {
+    "SimplePruningGate":SimplePruningGate,
+    "StopGradientLayer":StopGradientLayer
+}
+
 
 BATCH_SIZE_GPU = 256
 BATCH_SIZE_ONNX_GPU = 128
@@ -63,8 +75,13 @@ def tf_convert_tflite(model):
     return model_
 
 def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
+    model = remove_augmentation(model, custom_objects)
+    
     total_t = 0
-    input_shape = list(model.input.shape)
+    if type(model.input) == list:
+        input_shape = model.input[0].shape
+    else:
+        input_shape = list(model.input.shape)
     if input_shape[1] is None:
         input_shape = [None, 224, 224, 3]
     if batch_size == -1:
@@ -166,137 +183,145 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
     del input_data
     return avg_time * 1000
 
-def run():
 
-    import sys
-    hold_dir = sys.argv[1]
-    if len(sys.argv) >= 3:
-        target_dir = sys.argv[2]
-    else:
-        target_dir = None
-
-    ignore = False
-    for arg in sys.argv:
-        if "ignore" in arg:
-            ignore = True
-            break
-
-
+def validate(model, model_handler, dataset):
     custom_objects = {
         "SimplePruningGate":SimplePruningGate,
         "StopGradientLayer":StopGradientLayer
     }
+    if dataset == "imagenet2012":
+        n_classes = 1000
+    elif dataset == "cifar100":
+        n_classes = 100
 
-    noigpu = False
-    for a in sys.argv:
-        if a == "noigpu":
-            print("NO IGPU TEST")
-            noigpu = True
-            break
+    batch_size = model_handler.batch_size
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=False, do_cutmix=False, custom_objects=custom_objects)
+    (_, _, test_data_generator), (iters, iters_val) = load_dataset(
+        dataset,
+        model_handler,
+        sampling_ratio=1.0,
+        training_augment=False,
+        n_classes=n_classes)
+    model_handler.compile(model, run_eagerly=False)
+    return model.evaluate(test_data_generator, verbose=1)[1]
 
-    notflite = False
-    for a in sys.argv:
-        if a == "notflite":
-            print("NO TFLITE TEST")
-            notflite = True
-            break
+def run():
+
+    parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
+    parser.add_argument('--dataset', type=str) # dataset-sensitive configuration
+    parser.add_argument('--target_dir', type=str, default=None, help='model')
+    parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
+    parser.add_argument('--noigpu', action='store_true')
+    parser.add_argument('--notflite', action='store_true')
+
+    args = parser.parse_args()
+    from run import get_handler
+    model_handler = get_handler(args.model_name)
+
+    target_dir = args.target_dir
+
+    noigpu = args.noigpu
+    notflite = args.notflite
 
     gpu_available = tf.test.is_gpu_available()
 
-    onlydir = [f for f in listdir(hold_dir) if not isfile(join(hold_dir, f))]
-    for dir_ in onlydir:
-        if target_dir != dir_ and target_dir is not None:
-            continue
-        dir_backup = dir_
-        dir_ = hold_dir + "/" + dir_
-        node_file = os.path.join(dir_, "nodes.json")
-        print(dir_)
+    node_file = os.path.join(target_dir, "nodes.json")
 
-        mh = ModelHouse(None, custom_objects=custom_objects)
-        mh.load(dir_)
+    mh = ModelHouse(None, custom_objects=custom_objects)
+    mh.load(target_dir)
 
-        if not os.path.exists(node_file+"_backup"):
-            shutil.copy(node_file, node_file+"_backup")
+    if not os.path.exists(node_file+"_backup"):
+        shutil.copy(node_file, node_file+"_backup")
 
-        with open(node_file, "r") as f:
-            nodes = json.load(f)
+    with open(node_file, "r") as f:
+        nodes = json.load(f)
 
-        base = {
-            "gpu": measure(mh.model, mode="gpu"),
-            "cpu": measure(mh.model, mode="cpu"),
-            "onnx_gpu": measure(mh.model, mode="onnx_gpu"),
-            "onnx_cpu": measure(mh.model, mode="onnx_cpu"),
-        }
-        data = {}
-        for key, val in nodes.items():
-            model_file = os.path.join(dir_, "nets", key+".h5")
-            nodes[key]["model_path"] = model_file
+    base = {
+        "gpu": measure(mh.model, mode="gpu"),
+        "cpu": measure(mh.model, mode="cpu"),
+        "onnx_gpu": measure(mh.model, mode="onnx_gpu"),
+        "onnx_cpu": measure(mh.model, mode="onnx_cpu"),
+    }
+    data = {}
+    base_acc = validate(mh._model, model_handler, args.dataset)
+    for key, val in nodes.items():
+        print("-------", key, val["tag"])
+        model_file = os.path.join(target_dir, "nets", key+".h5")
+        nodes[key]["model_path"] = model_file
 
-            node = mh.get_node(key)
-            model = node.net.model
-            
-            profile = val["profile"]
-            data[key] = profile
+        node = mh.get_node(key)
+        model = node.net.model
+        
+        profile = val["profile"]
+        data[key] = profile
 
-            if "app" in val["tag"]:
-                #rmodel_path = os.path.join(dir_, "nets", val["origin"]+".h5")
-                #reference_model = tf.keras.models.load_model(rmodel_path)
-                mh.get_node(val["origin"]).net.wakeup()
-                reference_model = mh.get_node(val["origin"]).net.model
-                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
-                parser.parse()
-                model_ = parser.cut(model)
-                print(model.count_params(), model_.count_params())
-                model = model_
-                print("ORIGIN:", data[val["origin"]])
-                mh.get_node(val["origin"]).net.sleep()
+        if "app" in val["tag"]:
+            #rmodel_path = os.path.join(dir_, "nets", val["origin"]+".h5")
+            #reference_model = tf.keras.models.load_model(rmodel_path)
+            mh.get_node(val["origin"]).net.wakeup()
+            reference_model = mh.get_node(val["origin"]).net.model
+            parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
+            parser.parse()
+            model_ = parser.cut(model)
+            print(model.count_params(), model_.count_params())
+            model = model_
+            print("ORIGIN:", data[val["origin"]])
+            print(acc)
+            mh.get_node(val["origin"]).net.sleep()
 
-            #if "flops" in profile:
-            #    flops = profile["flops"]
-            #else:
-            flops = get_flops(model)
-            profile["flops"] = flops
+        #if "flops" in profile:
+        #    flops = profile["flops"]
+        #else:
+        flops = get_flops(model)
+        profile["flops"] = flops
 
-            if flops > 390000000:
-                gpu = 10000000000.0
-                igpu = 10000000000.0
-                tflite = 100000000000.0
+        """
+        if flops > 390000000:
+            gpu = 10000000000.0
+            igpu = 10000000000.0
+            tflite = 100000000000.0
+        else:
+        """
+        if node.is_original():
+            profile["iacc"] = base_acc
+        else:
+            emodel = mh._parser.extract(mh.origin_nodes, [mh.get_node(key)])
+            acc = validate(emodel, model_handler, args.dataset)
+            profile["iacc"] = acc
+
+        if not noigpu:
+            if node.is_original():
+                igpu = 0.0
             else:
+                igpu = measure(emodel, mode="gpu")
+                igpu = base["gpu"] - igpu
+ 
+        if not notflite:
+            try:
+                tflite = measure(model, mode="tflite")
+            except Exception as e:
+                print(e)
+                tflite = 100000000000.0
 
-                if not noigpu:
-                    if node.is_original():
-                        igpu = 0.0
-                    else:
-                        emodel = mh._parser.extract(mh.origin_nodes, [mh.get_node(key)])
-                        igpu = measure(emodel, mode="gpu")
-                        igpu = base["gpu"] - igpu
-                #gpu = measure(model, mode="gpu")
-                if not notflite:
-                    try:
-                        tflite = measure(model, mode="tflite")
-                    except Exception as e:
-                        print(e)
-                        tflite = 100000000000.0
-            #cpu = measure(model, mode="cpu")
-            gpu = 0
-            cpu = 0
-            onnx_gpu = measure(model, mode="onnx_gpu")
-            onnx_cpu = measure(model, mode="onnx_cpu")
+        gpu = 0
+        cpu = 0
+        onnx_gpu = measure(model, mode="onnx_gpu")
+        onnx_cpu = measure(model, mode="onnx_cpu")
 
-            profile["gpu"] = gpu
-            if not noigpu:
-                profile["igpu"] = igpu
-            profile["cpu"] = cpu
-            profile["onnx_cpu"] = onnx_cpu
-            profile["onnx_gpu"] = onnx_gpu
+        profile["gpu"] = gpu
+        if not noigpu:
+            profile["igpu"] = igpu
+        profile["cpu"] = cpu
+        profile["onnx_cpu"] = onnx_cpu
+        profile["onnx_gpu"] = onnx_gpu
 
-            if not notflite:
-                profile["tflite"] = tflite
-            print(key, profile, base)
-            del model
+        if not notflite:
+            profile["tflite"] = tflite
+        print(key, profile, base)
+        del model
 
-        with open(node_file, "w") as f:
-            json.dump(nodes, f, indent=4)
+    with open(node_file, "w") as f:
+        json.dump(nodes, f, indent=4)
 
 if __name__ == "__main__":
     run()

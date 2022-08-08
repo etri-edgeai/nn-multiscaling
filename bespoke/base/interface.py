@@ -252,8 +252,8 @@ class ModelHouse(object):
         for n in self._nodes:
             if n.is_original():
                 ret = B.build_samples(self._model, data, n.pos)
-                self._sample_inputs[n.pos[0]] = ret[0]
-                self._sample_outputs[n.pos[1]] = ret[1]
+                self._sample_inputs[n.pos[0]] = [ret_[0] for ret_ in ret]
+                self._sample_outputs[n.pos[1]] = [ret_[1] for ret_ in ret]
 
     def make_train_model(self, nodes, scale=0.1):
         return B.make_train_model(self._model, nodes, scale=scale)
@@ -261,8 +261,11 @@ class ModelHouse(object):
     def profile(self):
         if self._sample_inputs is None:
             raise ValueError("build_sample_data should've been called before profiling.")
+
+        get_replaced = lambda n: self._parser.extract(self.origin_nodes, [n], return_gated_model=False)
+
         for n in self._nodes:
-            n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
+            n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]], get_replaced=get_replaced)
 
     def _get_predefined_paths(self, dir_):
         subnet_dir_path = os.path.join(dir_, "nets")
@@ -360,8 +363,6 @@ def test():
 
 
 
-
-    mh.query(0.5)
 
    
 

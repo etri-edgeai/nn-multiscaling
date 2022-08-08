@@ -541,9 +541,13 @@ class TFNet(common.Net):
     def get_mse(self, sample_inputs, sample_outputs):
         if self.is_sleeping():
             self.wakeup()
-        outputs = self._model(sample_inputs)
+        ret = 0
+        for input_, output_ in zip(sample_inputs, sample_outputs):
+            outputs = self._model(input_, training=False)
+            ret += tf.reduce_mean(tf.keras.losses.mean_squared_error(output_, outputs))
+
         self.sleep()
-        return tf.reduce_mean(tf.keras.losses.mean_squared_error(sample_outputs, outputs))
+        return ret
 
     def get_cmodel(self, origin_model):
         if self.is_sleeping():
@@ -1075,6 +1079,17 @@ def get_type(model, layer_name=None):
         type_ = model.get_layer(layer_name).__class__
     return type_ 
 
+
+def numpyfy(data):
+
+    if type(data) == list:
+        ret = []
+        for d in data:
+            ret.append(numpyfy(d))
+        return ret
+    else:
+        return data.numpy()
+
 def build_samples(model, data_gen, pos):
     outputs = [[],[]]
     for idx, p in enumerate(pos):
@@ -1082,8 +1097,11 @@ def build_samples(model, data_gen, pos):
             outputs[idx].append(model.get_layer(pp).output)
 
     extractor = tf.keras.Model(model.inputs, outputs)
+    results = []
     for data in data_gen:
-        results = extractor(data)
+        y = extractor(data, training=False)
+        y = numpyfy(y)
+        results += [y]
     return results
 
 def cut(model, reference_model, custom_objects):
@@ -1110,8 +1128,8 @@ def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
 
     for idx, loc in enumerate(distil_loc):
         tlayer, layer = loc
-        t = toutputs_[idx]
-        s = model.get_layer(layer).output
+        t = tf.cast(toutputs_[idx], tf.float32)
+        s = tf.cast(model.get_layer(layer).output, tf.float32)
         new_model.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
     new_model.add_loss(tf.reduce_mean(tf.keras.losses.kl_divergence(model.output, toutputs_[-1])*scale))
 
@@ -1152,8 +1170,8 @@ def make_transfer_model(model, output_idx, output_map, scale, model_builder=None
 
     tf.keras.utils.plot_model(model, "ttt.pdf")
     for (t, s) in output_map:
-        t = model.outputs[output_idx[t]]
-        s = model.outputs[output_idx[s]]
+        t = tf.cast(model.outputs[output_idx[t]], tf.float32)
+        s = tf.cast(model.outputs[output_idx[s]], tf.float32)
         model.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
 
     return model
