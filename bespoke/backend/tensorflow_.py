@@ -255,20 +255,20 @@ class TFParser(common.Parser):
                         scale = scales[pruning_cnt]
                         print("Pruning! %f %d" % (scale, pruning_cnt))
                         subnet_ = prune(subnet[0], scale, self._namespace, custom_objects=self._parser.custom_objects, ret_model=True)
-                        subnet = tuple([subnet_] + list(subnet)[1:])
+                        subnet_ = tuple([subnet_] + list(subnet)[1:])
                     elif pruning_cnt < 0:
                         giveup = True
                         break
                     
                     pass_ = True
                     if memory_limit is not None and memory_limit > 0.0:
-                        shape = list(subnet[0].input.shape)
+                        shape = list(subnet_[0].input.shape)
                         shape[0] = batch_size
                         data = np.random.rand(*shape)
                         tf.config.experimental.reset_memory_stats('GPU:0')
                         peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
                         try:
-                            subnet[0](data)
+                            subnet_[0](data)
                         except Exception as e:
                             print("Extremely large! %d" % pruning_cnt)
                             print(target_shapes)
@@ -281,7 +281,7 @@ class TFParser(common.Parser):
                             print(memory_limit, peak2-peak1)
 
                     if params_limit is not None and params_limit > 0.0:
-                        if subnet[0].count_params() > params_limit:
+                        if subnet_[0].count_params() > params_limit:
                             pass_ = False
 
                     if not pass_:
