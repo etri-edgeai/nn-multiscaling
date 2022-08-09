@@ -66,6 +66,7 @@ def score_f(obj_value, base_value, metric, lda, nodes):
     approx_value = base_value
     score = None
     sum_mse = 0
+    sum_iacc = 0
     for n in nodes:
         on = n.origin
         if on is not None:
@@ -76,10 +77,11 @@ def score_f(obj_value, base_value, metric, lda, nodes):
                 approx_value = approx_value - on._profile[metric] + n._profile[metric]
             else:
                 approx_value = approx_value - n._profile[metric]
+            sum_iacc = on._profile["iacc"] - n._profile["iacc"]
         sum_mse += n._profile["mse"]
 
-    score = max(approx_value / obj_value, 1.0) + sum_mse * lda
-    print(approx_value, obj_value, sum_mse, score)
+    score = max(approx_value / obj_value, 1.0) + sum_iacc * lda
+    print(approx_value, obj_value, sum_iacc, score)
     return -1 * score
 
 
@@ -178,12 +180,12 @@ class ModelHouse(object):
                         break
                 if compatible:
                     if on is None:
-                        score = max(approx_value / obj_value, 1.0) + n._profile["mse"] * lda
+                        score = max(approx_value / obj_value, 1.0)
                     else:
                         if metric != "igpu":
-                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
+                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
                         else:
-                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + n._profile["mse"] * lda
+                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score
