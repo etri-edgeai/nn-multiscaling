@@ -62,10 +62,11 @@ def get_model_brnn(vocab_size):
 
     inputs = keras.Input(shape=(None,), dtype="int32")
     # Embed each integer in a 128-dimensional vector
-    x = layers.Embedding(vocab_size, 32)(inputs)
+    x = layers.Embedding(vocab_size, 8)(inputs)
     # Add 2 bidirectional LSTMs
-    x = layers.Bidirectional(layers.LSTM(64, return_sequences=True))(x)
-    x = layers.Bidirectional(layers.LSTM(64))(x)
+    x = layers.Bidirectional(layers.GRU(16, return_sequences=True))(x)
+    x = layers.Bidirectional(layers.GRU(16))(x)
+    x = layers.Dropout(0.1)(x)
     # Add a classifier
     outputs = layers.Dense(1, activation="relu")(x)
     return keras.Model(inputs, outputs)
@@ -81,7 +82,7 @@ def to_integer(data, voca):
             for t in targets
         ]
         y.append(acc)
-        targets_ = sorted(targets_) # sort by id
+        #targets_ = sorted(targets_) # sort by id
         x.append(targets_)
 
     y_numpy = np.array(y, np.float32)
@@ -115,9 +116,10 @@ def train(data):
     #model = get_model_tf(len(voca)+2, maxlen=maxlen) # including unknown, padding
     model = get_model_brnn(len(voca)+2) # including unknown, padding
 
-    model.compile(optimizer="adam", loss="mean_squared_error")
+    opt = keras.optimizers.Adam(learning_rate=0.0001)
+    model.compile(optimizer=opt, loss="mean_squared_error")
     history = model.fit(
-        x_train, y_train, batch_size=3, epochs=10, validation_data=(x_test, y_test)
+        x_train, y_train, batch_size=3, epochs=100, validation_data=(x_test, y_test)
         )
 
 

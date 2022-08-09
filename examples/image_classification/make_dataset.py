@@ -185,6 +185,7 @@ def run():
     parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
     parser.add_argument('--epochs', type=int, default=1, help="number of data")
     parser.add_argument('--num', type=int, default=100, help="number of data")
+    parser.add_argument('--sampling_ratio', type=float, default=1.0, help="number of data")
 
     args = parser.parse_args()
     from run import get_handler
@@ -221,7 +222,8 @@ def run():
 
     with tempfile.TemporaryDirectory() as dirpath:
         tf.keras.models.save_model(mh._model, os.path.join(dirpath, "base.h5"), overwrite=True, include_optimizer=False)
-        for i in range(args.num):
+        i = 0
+        while i < args.num: 
             print("-------------------------- %d ----------------------" % i)
             r = np.random.randint(len(anodes)+1)
             targets = np.random.choice(anodes, r, replace=False)
@@ -242,6 +244,7 @@ def run():
                 for t in targets_
             ]
             gated, non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
+            print(ex_maps)
 
             filepath = os.path.join(dirpath, "current.h5")
             tf.keras.models.save_model(gated, filepath, overwrite=True, include_optimizer=False)
@@ -261,6 +264,8 @@ def run():
 
             with open("dataset/pp.json", "w") as f:
                 json.dump(records, f)
+
+            i += 1
 
 if __name__ == "__main__":
     run()
