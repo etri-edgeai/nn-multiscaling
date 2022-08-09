@@ -262,8 +262,6 @@ class ModelHouse(object):
         if self._sample_inputs is None:
             raise ValueError("build_sample_data should've been called before profiling.")
 
-        get_replaced = lambda n: self._parser.extract(self.origin_nodes, [n], return_gated_model=False)
-
         for n in self._nodes:
             n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
 
