@@ -269,6 +269,7 @@ class Dataset:
   augmenter=None,
   shuffle_buffer_size=10000,
   file_shuffle_buffer_size=1024,
+  sampling_count=None,
   cache=False,
   mean_subtract=False,
   standardize=False,
@@ -307,6 +308,7 @@ class Dataset:
     self.data_preprocess_func = data_preprocess_func
     self.model_preprocess_func = model_preprocess_func
     self._num_gpus = hvd.size() if not hvd_size else hvd_size
+    self.sampling_count = sampling_count
     
 
     if self._augmenter_name is not None:
@@ -448,7 +450,10 @@ class Dataset:
     if self._dataset is None:
         raise ValueError('Dataset must specify a path for the data files.')
 
-    dataset = tfds.load(self._dataset, split=self._split)
+    if self.sampling_count is not None:
+        dataset = tfds.load(self._dataset, split=self._split).shuffle(self._shuffle_buffer_size).take(self.sampling_count)
+    else:
+        dataset = tfds.load(self._dataset, split=self._split)
     return dataset
 
   def pipeline(self, dataset: tf.data.Dataset) -> tf.data.Dataset:

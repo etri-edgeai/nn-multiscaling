@@ -19,6 +19,7 @@ import time
 import subprocess
 import pickle
 
+#os.environ['NCCL_P2P_LEVEL'] = "PIX"
 import horovod.tensorflow.keras as hvd
 hvd.init()
 
@@ -134,7 +135,7 @@ def validate(model, test_data_gen, model_handler):
 
 def transfer_learning_(model_path, model_name, config_path, lr=0.1): 
     silence_tensorflow()
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3,4,5,6,7'
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices) > 0:
@@ -273,7 +274,7 @@ def transfer_learning(dataset, mh, model_name, model_handler, config_path, targe
                     f"CUDA_VISIBLE_DEVICES=0,1,2 horovodrun -np 3 python run.py --model_path {os.path.join(dirpath, 'model.h5')} --mode finetune --trmode --model_name {model_name} --sampling_ratio 1.0 --num_epochs {num_epochs} --config {config_path} --postfix _ignore"
                 ], shell=True))
                 """
-                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=3, use_mpi=True)
+                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=7, use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
                     raise Exception("err")
@@ -594,11 +595,12 @@ def run():
             mixed_precision.set_global_policy('mixed_float16')
             model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
 
-        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
 
         distil_loc = None
         if args.teacher_path is not None:
             teacher = tf.keras.models.load_model(args.teacher_path)
+            teacher = remove_augmentation(teacher, custom_objects=custom_objects)
 
             if config["training_conf"]["use_amp"]:
                 teacher = change_dtype(teacher, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
