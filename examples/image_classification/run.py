@@ -661,9 +661,9 @@ def run():
 
         if hvd.rank() == 0:
             filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
-        finetune_time_t2 = time.time()
-        running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
-        running_time_dump(filepath, running_time)
+            finetune_time_t2 = time.time()
+            running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
+            running_time_dump(filepath, running_time)
 
     elif args.mode == "cut":
         if args.model_path is not None:
