@@ -22,7 +22,7 @@ class PruningGenerator(Generator):
 
     def generate(self, net, scales=None, init=False, custom_objects=None):
         if scales is None:
-            scales = [0.25, 0.5, 0.75]
+            scales = [0.125, 0.25, 0.5, 0.75]
 
         alternatives = []
         for idx, scale in enumerate(scales):
