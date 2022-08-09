@@ -265,7 +265,7 @@ class ModelHouse(object):
         get_replaced = lambda n: self._parser.extract(self.origin_nodes, [n], return_gated_model=False)
 
         for n in self._nodes:
-            n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]], get_replaced=get_replaced)
+            n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
 
     def _get_predefined_paths(self, dir_):
         subnet_dir_path = os.path.join(dir_, "nets")
