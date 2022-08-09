@@ -16,7 +16,10 @@ from utils import optimizer_factory
 
 from models.loss import BespokeTaskLoss, accuracy
 
-def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=1.0, mixup_alpha=0.8):
+def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=0.5, mixup_alpha=0.5, sampling_count=None):
+
+    if sampling_count is None:
+        sampling_count = (None, None)
 
     if dataset == "imagenet2012":
         data_dir = "tensorflow_datasets/imagenet2012/5.1.0_dali"
@@ -59,6 +62,7 @@ def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-
         cutmix_alpha=cutmix_alpha, 
         mixup_alpha=mixup_alpha,
         defer_img_mixing=True,
+        sampling_count=sampling_count[0],
         data_preprocess_func=lambda x:model_handler.data_preprocess_func(x, None),
         model_preprocess_func=lambda x:model_handler.model_preprocess_func(x, None),
         disable_map_parallelization=False))
@@ -86,6 +90,7 @@ def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-
         cutmix_alpha=0.0, 
         mixup_alpha=0.0,
         defer_img_mixing=False,
+        sampling_count=sampling_count[1],
         hvd_size=hvd.size(),
         data_preprocess_func=lambda x:model_handler.data_preprocess_func(x, None),
         model_preprocess_func=lambda x:model_handler.model_preprocess_func(x, None),
@@ -93,12 +98,9 @@ def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-
 
     return [ builder.build() for builder in builders ]
 
-def load_dataset(dataset, model_handler, training_augment=True, n_classes=100):
+def load_dataset(dataset, model_handler, training_augment=True, n_classes=100, sampling_ratio=1.0):
 
     batch_size = model_handler.get_batch_size(dataset)
-
-    train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, training_augment=training_augment, n_classes=n_classes)
-
     if dataset == "imagenet2012": 
         num_train_examples = 1281167
         num_val_examples = 50000
@@ -111,6 +113,13 @@ def load_dataset(dataset, model_handler, training_augment=True, n_classes=100):
     else:
         num_train_examples = 3680
         num_val_examples = 3669
+
+    if sampling_ratio != 1.0:
+        sampling_count = (int(num_train_examples * sampling_ratio), int(num_val_examples * sampling_ratio))
+    else:
+        sampling_count = (None, None)
+
+    train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, training_augment=training_augment, n_classes=n_classes, sampling_count=sampling_count)
 
     iters = num_train_examples // (batch_size * hvd.size())
     iters_val = num_val_examples // (batch_size * hvd.size())

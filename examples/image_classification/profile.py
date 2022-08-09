@@ -52,8 +52,8 @@ custom_objects = {
 }
 
 
-BATCH_SIZE_GPU = 256
-BATCH_SIZE_ONNX_GPU = 128
+BATCH_SIZE_GPU = 1
+BATCH_SIZE_ONNX_GPU = 1
 BATCH_SIZE_CPU = 1
 
 def tf_convert_onnx(model):
@@ -106,9 +106,9 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
             DEVICE_NAME = "cpu"
             DEVICE_INDEX = 0
         elif mode == "onnx_gpu":
-            providers = [('CUDAExecutionProvider', {"device_id":1})]
+            providers = [('CUDAExecutionProvider', {"device_id":0})]
             DEVICE_NAME = "cuda"
-            DEVICE_INDEX = 1
+            DEVICE_INDEX = 0
         else:
             raise NotImplementedError("check your mode: %s" % mode)
         m = rt.InferenceSession(output_path, providers=providers)
@@ -184,7 +184,7 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
     return avg_time * 1000
 
 
-def validate(model, model_handler, dataset):
+def validate(model, model_handler, dataset, sampling_ratio=1.0):
     custom_objects = {
         "SimplePruningGate":SimplePruningGate,
         "StopGradientLayer":StopGradientLayer
@@ -199,10 +199,11 @@ def validate(model, model_handler, dataset):
     (_, _, test_data_generator), (iters, iters_val) = load_dataset(
         dataset,
         model_handler,
-        sampling_ratio=1.0,
         training_augment=False,
+        sampling_ratio=sampling_ratio,
         n_classes=n_classes)
     model_handler.compile(model, run_eagerly=False)
+
     return model.evaluate(test_data_generator, verbose=1)[1]
 
 def run():
@@ -211,6 +212,7 @@ def run():
     parser.add_argument('--dataset', type=str) # dataset-sensitive configuration
     parser.add_argument('--target_dir', type=str, default=None, help='model')
     parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
+    parser.add_argument('--sampling_ratio', type=float, default=1.0, help='model')
     parser.add_argument('--noigpu', action='store_true')
     parser.add_argument('--notflite', action='store_true')
 
@@ -243,7 +245,7 @@ def run():
         "onnx_cpu": measure(mh.model, mode="onnx_cpu"),
     }
     data = {}
-    base_acc = validate(mh._model, model_handler, args.dataset)
+    base_acc = validate(mh._model, model_handler, args.dataset, sampling_ratio=args.sampling_ratio)
     for key, val in nodes.items():
         print("-------", key, val["tag"])
         model_file = os.path.join(target_dir, "nets", key+".h5")
@@ -286,7 +288,7 @@ def run():
             profile["iacc"] = base_acc
         else:
             emodel = mh._parser.extract(mh.origin_nodes, [mh.get_node(key)])
-            acc = validate(emodel, model_handler, args.dataset)
+            acc = validate(emodel, model_handler, args.dataset, sampling_ratio=args.sampling_ratio)
             profile["iacc"] = acc
 
         if not noigpu:

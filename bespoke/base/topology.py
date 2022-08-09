@@ -85,9 +85,10 @@ class Node(object):
 
     def profile(self, sample_inputs, sample_outputs):
         if "app" in self.tag:
-            self._profile = self._net.profile(sample_inputs, sample_outputs, cmodel=self.get_cmodel())
+            temp = self._net.profile(sample_inputs, sample_outputs, cmodel=self.get_cmodel())
         else:
-            self._profile = self._net.profile(sample_inputs, sample_outputs)
+            temp = self._net.profile(sample_inputs, sample_outputs)
+        self._profile.update(temp)
 
     def load_model(self, load_dir, custom_objects=None):
         model = B.load_model_from_node(load_dir, self.id_, custom_objects)
