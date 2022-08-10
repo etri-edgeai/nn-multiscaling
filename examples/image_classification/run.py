@@ -728,7 +728,7 @@ def run():
         metric = args.metric
         gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
         filepath = student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
-        tf.keras.utils.plot_model(gated, "query_gated.pdf", show_shapes=True)
+        tf.keras.utils.plot_model(gated, os.path.join(arg.source_dir, "query_gated.pdf"), show_shapes=True)
         student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
         student_dir = os.path.dirname(filepath)
         basename = os.path.splitext(os.path.basename(filepath))[0]
