@@ -729,7 +729,6 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             else:
                 inputs_.append(layer["config"]["name"])
 
-        tf.keras.utils.plot_model(cmodel, "cmodel%d.pdf" % idx, show_shapes=True)
         for layer in replacement:
             for flow in layer["inbound_nodes"]:
                 for inbound in flow:
@@ -766,7 +765,6 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             print(replacement)
             print(pos)
             print("---")
-        tf.keras.utils.plot_model(parser.model, "error.pdf", show_shapes=True)
         import sys, traceback
         traceback.print_exc(file=sys.stdout)
         sys.exit()
@@ -1124,8 +1122,6 @@ def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
     else:
         new_model = model_builder(model.input, [model.output]+toutputs_)
 
-    tf.keras.utils.plot_model(new_model, "distill.pdf")
-
     for idx, loc in enumerate(distil_loc):
         tlayer, layer = loc
         t = tf.cast(toutputs_[idx], tf.float32)
@@ -1168,7 +1164,6 @@ def make_transfer_model(model, output_idx, output_map, scale, model_builder=None
     if model_builder is not None:
         model = model_builder(model.input, model.output)
 
-    tf.keras.utils.plot_model(model, "ttt.pdf")
     for (t, s) in output_map:
         t = tf.cast(model.outputs[output_idx[t]], tf.float32)
         s = tf.cast(model.outputs[output_idx[s]], tf.float32)
