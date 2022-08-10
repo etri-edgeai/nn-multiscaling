@@ -244,7 +244,8 @@ def run():
                 for t in targets_
             ]
             gated, non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
-            print(ex_maps)
+            if len(ex_maps) == 0:
+                continue
 
             filepath = os.path.join(dirpath, "current.h5")
             tf.keras.models.save_model(gated, filepath, overwrite=True, include_optimizer=False)
