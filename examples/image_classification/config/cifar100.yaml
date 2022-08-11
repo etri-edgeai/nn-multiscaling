@@ -1,12 +1,16 @@
 dataset: "cifar100"
 num_classes: 100
 models:
+  - ResNet50V2
   - InceptionResNetV2
   - MobileNetV2
   - MobileNet
   - EfficientNetB1
   - EfficientNetV2B1
   - EfficientNetV2S
+  - ResNetRS101
+  - ResNetRS152
+  - RegNetX002
 
 lr: 0.001
 sampling_ratio: 1.0

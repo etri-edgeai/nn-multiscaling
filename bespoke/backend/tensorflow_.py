@@ -1046,14 +1046,18 @@ def load_model(filepath, custom_objects=None):
 def generate_pretrained_models(list_=None):
     baselist = [
         tf.keras.applications.ResNet50V2
-        #tf.keras.applications.InceptionResNetV2,
-        #tf.keras.applications.MobileNetV2,
-        #tf.keras.applications.MobileNet,
-        #tf.keras.applications.DenseNet121,
-        #tf.keras.applications.NASNetMobile,
-        #tf.keras.applications.EfficientNetB1,
-        #tf.keras.applications.EfficientNetV2B1,
-        #tf.keras.applications.EfficientNetV2S
+        tf.keras.applications.InceptionResNetV2,
+        tf.keras.applications.MobileNetV2,
+        tf.keras.applications.MobileNet,
+        tf.keras.applications.DenseNet121,
+        tf.keras.applications.NASNetMobile,
+        tf.keras.applications.EfficientNetB1,
+        tf.keras.applications.EfficientNetV2B1,
+        tf.keras.applications.EfficientNetV2S,
+        tf.keras.applications.resnet_rs.ResNetRS152,
+        tf.keras.applications.resnet_rs.ResNetRS101,
+        tf.keras.applications.regnet.RegNetX002,
+        tf.keras.applications.regnet.RegNetX004
     ]
     dict_ = {
         class_.__name__:class_ for class_ in baselist
