@@ -610,11 +610,6 @@ def get_parser(model, namespace, custom_objects):
 
 def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
 
-    #gmodel, gm = parser.inject(with_mapping=True, with_splits=True)
-    #for layer in gmodel.layers: 
-    #    if layer.__class__ == SimplePruningGate:
-    #        layer.gates.assign(np.ones((layer.ngates,)))
-
     groups = parser.get_sharing_groups()
     r_groups = {}
     for group in groups:
@@ -624,7 +619,6 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
 
     # get a pruned model with union consensus
     cparser = {}
-    exit_gates = {}
     for n in nodes:
         if n.net.is_sleeping():
             n.net.wakeup()
@@ -641,9 +635,6 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             last = cparser[n.id_].get_last_transformers()
             if type(last) == str:
                 last = [last]
-            for t in last:
-                gate_name = cgm[t][0]["config"]["name"]
-                exit_gates[t] = n.net.model.get_layer(gate_name).gates.numpy()
 
     replacing_mappings = []
     in_maps = None
@@ -687,18 +678,6 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         cmodel_map[n.id_] = cmodel
         if n.net.is_sleeping():
             n.net.wakeup()
-        print(cmodel.count_params(), n.net.model.count_params())
-
-        # restore
-        for t in last:
-            if "gate_mapping" in n.net.meta:
-                for cg in cgroups:
-                    if t in cg:
-                        for l in cg:
-                            gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
-                            gates = n.net.model.get_layer(gate_name).gates
-                            gates.assign(backup[gate_name])
-                        break
 
         onode = origin_nodes[tuple(n.pos)]
         onode.net.wakeup()
@@ -793,74 +772,10 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                     not_det.remove(layer.name)
     assert len(not_det) == 0
 
-    parser_ = PruningNNParser(model, custom_objects=parser._custom_objects, gate_class=SimplePruningGate) 
-    parser_.parse()
-    gmodel, gm = parser_.inject(with_splits=True, with_mapping=True)
-
-    for layer in gmodel.layers:
-        if layer.__class__ == SimplePruningGate:
-            layer.gates.assign(np.zeros((layer.ngates,)))
-
-    sharing_groups = parser_.get_sharing_groups()
-    sum_ratio = {}
-    sum_cnt = {}
-    for t in exit_gates:
-        gates = exit_gates[t]
-        target_gate = gmodel.get_layer(gm[(t, 0)][0]["config"]["name"])
-        tgates = target_gate.gates.numpy()
-
-        for gidx, g in enumerate(sharing_groups):
-            if gidx not in sum_ratio:
-                sum_ratio[gidx] = 0.0
-                sum_cnt[gidx] = 0
-            if t in g:
-                sum_ratio[gidx] = max(float(np.sum(gates)) / target_gate.ngates, sum_ratio[gidx])
-                sum_cnt[gidx] += 1
-                break
-        #union = (((gates + tgates) == 0.0) == False).astype(np.float32)
-        #target_gate.gates.assign(union)
-
-    for t in exit_gates:
-        gates = exit_gates[t]
-        target_gate = gmodel.get_layer(gm[(t, 0)][0]["config"]["name"])
-        #tgates = target_gate.gates.numpy()
-        for gidx, g in enumerate(sharing_groups):
-            if t in g:
-                sum_ = None 
-                for l in g:
-                    layer = gmodel.get_layer(l)
-                    if len(layer.get_weights()) > 0:
-                        w = layer.get_weights()[0]
-                        w = np.abs(w)
-                        w = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
-                        if sum_ is None:
-                            sum_ = w
-                        else:
-                            sum_ += w
-                sorted_ = np.sort(sum_, axis=None)
-                #gscale = float(sum_ratio[gidx]) / sum_cnt[gidx]
-                gscale = float(sum_ratio[gidx])
-                remained = min(int((len(sorted_)-1)*gscale), len(sorted_)-1-5)
-                if remained >= len(sum_):
-                    remained = len(sum_)-1
-                val = sorted_[remained]
-                mask = (sum_ >= val).astype(np.float32)
-
-                for l in g:
-                    target_gate = gmodel.get_layer(gm[(l, 0)][0]["config"]["name"])
-                    #target_gate.gates.assign(tgates)
-                    target_gate.gates.assign(mask)
-
-    for layer in gmodel.layers:
-        if layer.__class__ == SimplePruningGate:
-            if np.sum(layer.gates.numpy()) == 0:
-                layer.gates.assign(np.ones((layer.ngates,)))
-
     if return_gated_model:
-        return gmodel, model, ex_maps
+        return model, ex_maps
     else:
-        ret = parser_.cut(gmodel)
-        return ret
+        return model
 
 def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
     outputs = []
@@ -993,22 +908,34 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         remained = max(int((len(sorted_)-1)*scale), 5)
         if remained >= len(mask):
             remained = len(mask)-1
-        val = sorted_[remained]
-        mask = (mask >= val).astype(np.float32)
+        val_ = sorted_[remained]
+        mask = np.zeros((max_,))
+        for cidx in range(mask.shape[0]):
+            if mask[cidx] < val_:
+                avoid_prune = False
+                for key, val in items:
+                    if np.sum(mask[val[0][0]:val[0][1]]) <= 5.0:
+                        avoid_prune = True
+                        break
+                if not avoid_prune:
+                    mask[cidx] = 0.0
+                else:
+                    mask[cidx] = 1.0
+            else:
+                mask[cidx] = 1.0
 
         # Distribute
         for key, val in items:
             if len(val) > 1:
                 for v in val[1:]:
                     mask[v[0]:v[1]] = mask[val[0][0]:val[0][1]]
-        
+
         for key, val in dict_.items():
             if type(key) == str:
                 gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
                 if gates.shape[0] != val[0][1] - val[0][0]:
                     return False
                 gates.assign(mask[val[0][0]:val[0][1]])
-
     # test
     cutmodel = parser.cut(gated_model)
     if ret_model:
