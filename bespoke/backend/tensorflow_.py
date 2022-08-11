@@ -993,22 +993,34 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         remained = max(int((len(sorted_)-1)*scale), 5)
         if remained >= len(mask):
             remained = len(mask)-1
-        val = sorted_[remained]
-        mask = (mask >= val).astype(np.float32)
+        val_ = sorted_[remained]
+        mask = np.zeros((max_,))
+        for cidx in range(mask.shape[0]):
+            if mask[cidx] < val_:
+                avoid_prune = False
+                for key, val in items:
+                    if np.sum(mask[val[0][0]:val[0][1]]) <= 5.0:
+                        avoid_prune = True
+                        break
+                if not avoid_prune:
+                    mask[cidx] = 0.0
+                else:
+                    mask[cidx] = 1.0
+            else:
+                mask[cidx] = 1.0
 
         # Distribute
         for key, val in items:
             if len(val) > 1:
                 for v in val[1:]:
                     mask[v[0]:v[1]] = mask[val[0][0]:val[0][1]]
-        
+
         for key, val in dict_.items():
             if type(key) == str:
                 gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
                 if gates.shape[0] != val[0][1] - val[0][0]:
                     return False
                 gates.assign(mask[val[0][0]:val[0][1]])
-
     # test
     cutmodel = parser.cut(gated_model)
     if ret_model:
