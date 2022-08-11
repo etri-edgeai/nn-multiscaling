@@ -137,7 +137,7 @@ def finetune(model_path, teacher_path, targets, model_name, config_path, epochs,
         mixed_precision.set_global_policy('mixed_float16')
         model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
 
-    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects)
 
     teacher = tf.keras.models.load_model(teacher_path, custom_objects=custom_objects)
     teacher = remove_augmentation(teacher, custom_objects=custom_objects)

@@ -16,7 +16,7 @@ from utils import optimizer_factory
 
 from models.loss import BespokeTaskLoss, accuracy
 
-def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=0.5, mixup_alpha=0.5, sampling_count=None):
+def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=0.0, mixup_alpha=0.0, sampling_count=None):
 
     if sampling_count is None:
         sampling_count = (None, None)
@@ -98,7 +98,7 @@ def load_data_nvidia(dataset, model_handler, training_augment=True, batch_size=-
 
     return [ builder.build() for builder in builders ]
 
-def load_dataset(dataset, model_handler, training_augment=True, n_classes=100, sampling_ratio=1.0):
+def load_dataset(dataset, model_handler, training_augment=True, n_classes=100, sampling_ratio=1.0, cutmix_alpha=0.5, mixup_alpha=0.5):
 
     batch_size = model_handler.get_batch_size(dataset)
     if dataset == "imagenet2012": 
@@ -119,7 +119,7 @@ def load_dataset(dataset, model_handler, training_augment=True, n_classes=100, s
     else:
         sampling_count = (None, None)
 
-    train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, training_augment=training_augment, n_classes=n_classes, sampling_count=sampling_count)
+    train_data_generator, valid_data_generator = load_data_nvidia(dataset, model_handler, training_augment=training_augment, n_classes=n_classes, sampling_count=sampling_count, cutmix_alpha=cutmix_alpha, mixup_alpha=mixup_alpha)
 
     iters = num_train_examples // (batch_size * hvd.size())
     iters_val = num_val_examples // (batch_size * hvd.size())
@@ -144,7 +144,13 @@ def train(
     batch_size = model_handler.get_batch_size(dataset)
 
     if type(dataset) == str:
-        data_gen, iters_info = load_dataset(dataset, model_handler, training_augment=augment, n_classes=n_classes)
+        if conf is not None:
+            cutmix_alpha = conf["cutmix_alpha"]
+            mixup_alpha = conf["mixup_alpha"]
+        else:
+            cutmix_alpha = 0.0
+            mixup_alpha = 0.0
+        data_gen, iters_info = load_dataset(dataset, model_handler, training_augment=augment, n_classes=n_classes, cutmix_alpha=cutmix_alpha, mixup_alpha=mixup_alpha)
     else:
         data_gen, iters_info = dataset
     train_data_generator, valid_data_generator, test_data_generator = data_gen
@@ -167,7 +173,7 @@ def train(
             'examples_per_epoch': None,
             'boundaries': None,
             'multipliers': None,
-            'scale_by_batch_size': 1./float(batch_size),
+            'scale_by_batch_size': 0.0,
             'staircase': True,
             't_mul': conf["t_mul"],
             'm_mul': conf["m_mul"],
@@ -199,6 +205,23 @@ def train(
             base_learning_rate=learning_rate,
             params=opt_params
         )
+
+        class StepCounter(tf.keras.callbacks.Callback):
+
+            def __init__(self, scheduler):
+                super(StepCounter, self).__init__()
+                self.scheduler = scheduler
+                self._counter = 1
+
+            def on_train_batch_begin(self, batch, logs=None):
+                self._counter += 1
+
+            def on_epoch_begin(self, epoch, logs=None):
+                print(self.scheduler(self._counter))
+
+        if hvd.rank() == 0:
+            counter_ = StepCounter(learning_rate)
+            callbacks.append(counter_)
 
         if conf["use_amp"] and conf["grad_accum_steps"] > 1:
             optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
