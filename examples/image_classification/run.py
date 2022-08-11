@@ -726,10 +726,8 @@ def run():
         assert base_value > 0
         obj_value = args.obj_ratio
         metric = args.metric
-        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
-        filepath = student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
-        tf.keras.utils.plot_model(gated, os.path.join(arg.source_dir, "query_gated.pdf"), show_shapes=True)
-        student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
+        non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
+        filepath = student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
         student_dir = os.path.dirname(filepath)
         basename = os.path.splitext(os.path.basename(filepath))[0]
         with open(os.path.join(student_dir, "%s.map" % basename), "w") as file_:
