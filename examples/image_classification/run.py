@@ -174,7 +174,7 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
         mixed_precision.set_global_policy('mixed_float16')
         model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects)
 
-    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects, update_batch_size=True)
 
     if "training_conf" in config and config["training_conf"]["grad_accum_steps"] > 1:
         model_builder = lambda x, y: GAModel(
@@ -446,12 +446,12 @@ def run():
     if args.mode == "build":
         assert args.target_dir is not None
         assert model is not None
-        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects, update_batch_size=True)
         mh = ModelHouse(model)
     elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
         mh = ModelHouse(None, custom_objects=custom_objects)
         mh.load(args.source_dir)
-        mh._model = add_augmentation(mh._model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
+        mh._model = add_augmentation(mh._model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects, update_batch_size=True)
 
     # Build if necessary
     filter_ = None
@@ -552,7 +552,7 @@ def run():
             json.dump(running_time, file_)
 
     elif args.mode == "test": # Test
-        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects)
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=False, do_cutmix=False, custom_objects=custom_objects)
         (_, _, test_data_generator), (iters, iters_val) = load_dataset(
             config["dataset"],
             model_handler,
@@ -595,7 +595,7 @@ def run():
             mixed_precision.set_global_policy('mixed_float16')
             model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
 
-        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=True, do_cutmix=True, custom_objects=custom_objects, update_batch_size=True)
+        model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects, update_batch_size=True)
 
         distil_loc = None
         if args.teacher_path is not None:
