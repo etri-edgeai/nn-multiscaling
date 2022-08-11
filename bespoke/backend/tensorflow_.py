@@ -1045,7 +1045,7 @@ def load_model(filepath, custom_objects=None):
 
 def generate_pretrained_models(list_=None):
     baselist = [
-        tf.keras.applications.ResNet50V2
+        tf.keras.applications.ResNet50V2,
         tf.keras.applications.InceptionResNetV2,
         tf.keras.applications.MobileNetV2,
         tf.keras.applications.MobileNet,
