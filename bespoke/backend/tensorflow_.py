@@ -97,7 +97,7 @@ class TFParser(common.Parser):
     def _is_compressible(self, layers):
         compressible = False
         for layer in layers:
-            if layer.__class__.__name__ in ["Conv2D", "Dense"]:
+            if layer.__class__.__name__ in ["Conv2D", "Dense", "SeparableConv2D"]:
                 compressible = True
                 break
         return compressible
@@ -189,7 +189,7 @@ class TFParser(common.Parser):
 
                     right_idx = random.randint(1, min_)
                     right = self._trank[atrail[right_idx]]
-                    
+
                 if (self._parser.model.name, left, right) in history:
                     continue
                 history.add((self._parser.model.name, left, right))
@@ -215,8 +215,7 @@ class TFParser(common.Parser):
                     target_cchange = right_shape[-1] / left_shape[-1]
 
                     if not(spatial_change == target_schange and\
-                        ((input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1]) or use_adapter) and\
-                        channel_change == target_cchange):
+                        ((input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1]) or use_adapter)):
                         continue
 
                 layers_ = [
@@ -1046,15 +1045,15 @@ def load_model(filepath, custom_objects=None):
 
 def generate_pretrained_models(list_=None):
     baselist = [
-        tf.keras.applications.ResNet50V2,
-        tf.keras.applications.InceptionResNetV2,
-        tf.keras.applications.MobileNetV2,
-        tf.keras.applications.MobileNet,
+        tf.keras.applications.ResNet50V2
+        #tf.keras.applications.InceptionResNetV2,
+        #tf.keras.applications.MobileNetV2,
+        #tf.keras.applications.MobileNet,
         #tf.keras.applications.DenseNet121,
         #tf.keras.applications.NASNetMobile,
-        tf.keras.applications.EfficientNetB1,
-        tf.keras.applications.EfficientNetV2B1,
-        tf.keras.applications.EfficientNetV2S
+        #tf.keras.applications.EfficientNetB1,
+        #tf.keras.applications.EfficientNetV2B1,
+        #tf.keras.applications.EfficientNetV2S
     ]
     dict_ = {
         class_.__name__:class_ for class_ in baselist
