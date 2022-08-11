@@ -25,11 +25,12 @@ tf.config.experimental.set_synchronous_execution(True)
 tf.config.experimental.enable_op_determinism()
 
 physical_devices = tf.config.list_physical_devices('GPU')
-try:
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
-    tf.config.experimental.set_memory_growth(physical_devices[1], True)
-except:
-    pass
+if len(physical_devices) > 0:
+    for i, p in enumerate(physical_devices):
+        tf.config.experimental.set_memory_growth(
+            physical_devices[i], True
+            )
+    tf.config.set_visible_devices(physical_devices[0], 'GPU')
 
 from keras_flops import get_flops
 import numpy as np
@@ -106,9 +107,9 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
             DEVICE_NAME = "cpu"
             DEVICE_INDEX = 0
         elif mode == "onnx_gpu":
-            providers = [('CUDAExecutionProvider', {"device_id":0})]
+            providers = [('CUDAExecutionProvider', {"device_id":1})]
             DEVICE_NAME = "cuda"
-            DEVICE_INDEX = 0
+            DEVICE_INDEX = 1
         else:
             raise NotImplementedError("check your mode: %s" % mode)
         m = rt.InferenceSession(output_path, providers=providers)
