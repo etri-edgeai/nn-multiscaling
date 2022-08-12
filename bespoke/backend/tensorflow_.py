@@ -434,7 +434,7 @@ class TFParser(common.Parser):
                 }
                 subnet_cmodel = subnet_parser.cut(subnet_gmodel, new_spatial_shape=new_spatial_shape)
 
-                if subnet_cmodel.input.shape[-1] != input_shape[-1]: # Due to complex dependency.. then skip.
+                if subnet_cmodel.input.shape[-1] != input_shape[-1] or subnet_cmodel.output.shape[-1] != output_shape[-1]: # Due to complex dependency.. then skip.
                     del subnet_gmodel
                     del subnet_cmodel
                     continue
