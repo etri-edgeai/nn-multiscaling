@@ -122,7 +122,10 @@ class ModelHouse(object):
                 na.sleep()
         self._nodes.extend(nodes_)
 
-    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False):
+    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, data=None):
+        if data is not None:
+            self.build_sample_data(data)
+
         gen_ = PruningGenerator(self._namespace)
         nodes_ = []
         while len(nodes_) < min_num:
@@ -130,7 +133,12 @@ class ModelHouse(object):
             n = np.random.choice(self._nodes)
             tag = "app_origin" if n.tag == "origin" else "app_alter"
             scale = np.random.choice([0.25, 0.375, 0.5, 0.625, 0.75, 0.875])
-            alters = gen_.generate(n.net, [scale], custom_objects=self._custom_objects, init=init)
+            sample_data = self._sample_inputs[n.pos[0]]
+            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init)
+
+            if not alters:
+                continue
+
             for idx, a in enumerate(alters):
                 nodes_.append(Node(self._parser.get_id("anode"), tag, a, pos=n.pos))
                 nodes_[-1].origin = n

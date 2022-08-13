@@ -8,6 +8,7 @@ import copy
 import tempfile
 import pickle
 
+from numba import jit
 from tensorflow.keras import layers
 import tensorflow as tf
 import numpy as np
@@ -17,6 +18,7 @@ from nncompress.backend.tensorflow_.transformation.pruning_parser import Pruning
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation import parse, inject, cut, unfold
 from nncompress.backend import add_prefix
+from tqdm import tqdm
 
 from bespoke.backend import common
 from bespoke.base.topology import Node
@@ -942,8 +944,9 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         return cutmodel
     else:
         print(gated_model.output.shape, cutmodel.output.shape)
-        del cutmodel
 
+    return TFNet(cutmodel, custom_objects=parser.custom_objects)
+    """
     net = TFNet(gated_model, custom_objects=parser.custom_objects)
     gate_mapping = {}
     for key, value in gm.items():
@@ -951,6 +954,188 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         gate_mapping[key[0]] = value
     net.meta["gate_mapping"] = gate_mapping
     return net
+    """
+
+def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False):
+
+    # get inchannel dependency
+    def get_vindices(lidx, group_struct):
+        vindices = set([lidx])
+        last = len(vindices)
+        initial_run = True
+        visited = set()
+        while initial_run or (not last == len(vindices)):
+            initial_run = False
+            last = len(vindices)
+
+            for key, val in group_struct.items():
+                if type(key) == str and key not in visited:
+                    val = sorted(val, key=lambda x:x[0])
+                    for vidx in list(vindices):
+                        found = False
+                        for v in val:
+                            if v[0] <= vidx and vidx < v[1]:
+                                found = True
+                                relative = vidx - v[0]
+                                break
+                        if found:
+                            visited.add(key)
+                            for v in val:
+                                vindices.add(v[0]+relative)
+        return vindices
+
+    if type(net) == TFNet:
+        parser = PruningNNParser(net.model, allow_input_pruning=False, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+    else:
+        parser = PruningNNParser(net, allow_input_pruning=False, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+    parser.parse()
+
+    gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=False, with_mapping=True)
+    if init:
+        gated_model = tf.keras.models.clone_model(gated_model)
+    for layer in gated_model.layers:
+        if type(layer) == SimplePruningGate:
+            layer.collecting = False
+            layer.data_collecting = False
+            layer.gates.assign(np.ones((layer.ngates,)))
+
+    Y = []
+    for X in sample_data:
+        Y.append(gated_model(X))
+
+    tf.keras.utils.plot_model(gated_model, "mmm2.pdf", show_shapes=True)
+
+    # scoring
+    last_transformers = parser.get_last_transformers()
+    target_groups, gate_struct = parser.get_group_topology()
+    n_channels = 0
+    inverted = {}
+    for idx, (g, dict_) in enumerate(zip(target_groups, gate_struct)):
+        skip = False
+        for key, val in dict_.items():
+            if type(key) == str:
+                if key in last_transformers:
+                    skip = True
+                    break
+        if skip:
+            continue
+
+        max_ = 0
+        for key, val in dict_.items():
+            if type(key) == str:
+                for v in val:
+                    if v[1] > max_:
+                        max_ = v[1]
+        
+        vindex = []
+        for cidx in range(max_):
+            check = False
+            for v in vindex:
+                if cidx in v:
+                    check = True
+            if check:
+                continue
+            v = get_vindices(cidx, dict_)
+            vindex.append(v)
+
+        for vidx in range(len(vindex)):
+            inverted[n_channels] = (vindex[vidx], g, dict_)
+            n_channels += 1
+        
+    score = [0.0 for _ in range(n_channels)]
+    for idx in tqdm(range(n_channels), ncols=80):
+        v, g, dict_ = inverted[idx]
+        max_ = 0
+        for key, val in dict_.items():
+            if type(key) == str:
+                val = sorted(val, key=lambda x:x[0])
+                for v_ in val:
+                    if v_[1] > max_:
+                        max_ = v_[1]
+        mask = np.ones((max_,))
+        for cidx in v:
+            mask[cidx] = 0.0
+
+        for key, val in dict_.items():
+            if type(key) == str:
+                gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
+                if gates.shape[0] != val[0][1] - val[0][0]:
+                    return False
+                gates.assign(mask[val[0][0]:val[0][1]])
+
+        sum_ = 0.0
+        for X, y in zip(sample_data, Y):
+            predicted = gated_model(X)
+            sum_ += tf.math.reduce_mean(tf.keras.losses.mse(predicted, y))
+
+        score[idx] = float(sum_)
+
+        # restore
+        mask = np.ones((max_,))
+        for key, val in dict_.items():
+            if type(key) == str:
+                gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
+                if gates.shape[0] != val[0][1] - val[0][0]:
+                    return False
+                gates.assign(mask[val[0][0]:val[0][1]])
+
+    for cnt in range(int(n_channels*scale)):
+        
+        minidx = np.argmax(score)
+
+        v, g, dict_ = inverted[minidx]
+        max_ = 0
+        for key, val in dict_.items():
+            if type(key) == str:
+                val = sorted(val, key=lambda x:x[0])
+                for v_ in val:
+                    if v_[1] > max_:
+                        max_ = v_[1]
+        mask = np.ones((max_,))
+
+        # gate to mask
+        for key, val in dict_.items():
+            if type(key) == str:
+                gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
+                if gates.shape[0] != val[0][1] - val[0][0]:
+                    return False
+                for v_ in val:
+                    mask[v_[0]:v_[1]] = gates.numpy()
+
+        for cidx in v:
+            mask[cidx] = 0.0
+
+        if np.sum(mask) < 5.0:
+            for cidx in v:
+                mask[cidx] = 1.0
+        else:
+            # mask to gate
+            for key, val in dict_.items():
+                if type(key) == str:
+                    gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
+                    if gates.shape[0] != val[0][1] - val[0][0]:
+                        return False
+                    for v_ in val:
+                        gates.assign(mask[v_[0]:v_[1]])
+                        break
+            
+        score[minidx] = -999
+
+    # test
+    try:
+        cutmodel = parser.cut(gated_model)
+    except Exception as e:
+        print(e)
+        return False
+
+    if ret_model:
+        return cutmodel
+    else:
+        print(gated_model.output.shape, cutmodel.output.shape)
+
+    net = TFNet(cutmodel, custom_objects=parser.custom_objects)
+    return net
+
 
 def save_model(name, model, save_dir):
     path = os.path.join(save_dir, name+".h5")
