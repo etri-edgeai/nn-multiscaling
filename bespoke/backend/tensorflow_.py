@@ -957,7 +957,7 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     return net
     """
 
-def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False):
+def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
 
     # get inchannel dependency
     def get_vindices(lidx, group_struct):
@@ -986,12 +986,12 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         return vindices
 
     if type(net) == TFNet:
-        parser = PruningNNParser(net.model, allow_input_pruning=False, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(net.model, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
     else:
-        parser = PruningNNParser(net, allow_input_pruning=False, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(net, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
     parser.parse()
 
-    gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=False, with_mapping=True)
+    gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=pruning_exit, with_mapping=True)
     if init:
         gated_model = tf.keras.models.clone_model(gated_model)
     for layer in gated_model.layers:
@@ -1004,22 +1004,21 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
     for X in sample_data:
         Y.append(gated_model(X))
 
-    tf.keras.utils.plot_model(gated_model, "mmm2.pdf", show_shapes=True)
-
     # scoring
     last_transformers = parser.get_last_transformers()
     target_groups, gate_struct = parser.get_group_topology()
     n_channels = 0
     inverted = {}
     for idx, (g, dict_) in enumerate(zip(target_groups, gate_struct)):
-        skip = False
-        for key, val in dict_.items():
-            if type(key) == str:
-                if key in last_transformers:
-                    skip = True
-                    break
-        if skip:
-            continue
+        if not pruning_exit:
+            skip = False
+            for key, val in dict_.items():
+                if type(key) == str:
+                    if key in last_transformers:
+                        skip = True
+                        break
+            if skip:
+                continue
 
         max_ = 0
         for key, val in dict_.items():
@@ -1040,12 +1039,12 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
             vindex.append(v)
 
         for vidx in range(len(vindex)):
-            inverted[n_channels] = (vindex[vidx], g, dict_)
+            inverted[n_channels] = (vindex[vidx], g, dict_, idx)
             n_channels += 1
         
     score = [0.0 for _ in range(n_channels)]
     for idx in tqdm(range(n_channels), ncols=80):
-        v, g, dict_ = inverted[idx]
+        v, g, dict_, _ = inverted[idx]
         max_ = 0
         for key, val in dict_.items():
             if type(key) == str:
@@ -1060,8 +1059,6 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         for key, val in dict_.items():
             if type(key) == str:
                 gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
-                if gates.shape[0] != val[0][1] - val[0][0]:
-                    return False
                 gates.assign(mask[val[0][0]:val[0][1]])
 
         sum_ = 0.0
@@ -1076,15 +1073,14 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         for key, val in dict_.items():
             if type(key) == str:
                 gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
-                if gates.shape[0] != val[0][1] - val[0][0]:
-                    return False
                 gates.assign(mask[val[0][0]:val[0][1]])
 
+    masks = {}
     for cnt in range(int(n_channels*scale)):
         
         minidx = np.argmax(score)
 
-        v, g, dict_ = inverted[minidx]
+        v, g, dict_, idx = inverted[minidx]
         max_ = 0
         for key, val in dict_.items():
             if type(key) == str:
@@ -1092,16 +1088,12 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
                 for v_ in val:
                     if v_[1] > max_:
                         max_ = v_[1]
-        mask = np.ones((max_,))
-
-        # gate to mask
-        for key, val in dict_.items():
-            if type(key) == str:
-                gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
-                if gates.shape[0] != val[0][1] - val[0][0]:
-                    return False
-                for v_ in val:
-                    mask[v_[0]:v_[1]] = gates.numpy()
+        
+        if idx not in masks:
+            mask = np.ones((max_,))
+            masks[idx] = mask
+        else:
+            mask = masks[idx]
 
         for cidx in v:
             mask[cidx] = 0.0
@@ -1109,19 +1101,23 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         if np.sum(mask) < 5.0:
             for cidx in v:
                 mask[cidx] = 1.0
-        else:
-            # mask to gate
-            for key, val in dict_.items():
-                if type(key) == str:
-                    gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
-                    if gates.shape[0] != val[0][1] - val[0][0]:
-                        return False
-                    for v_ in val:
-                        gates.assign(mask[v_[0]:v_[1]])
-                        break
-            
+ 
         score[minidx] = -999
 
+    for idx, (g, dict_) in enumerate(zip(target_groups, gate_struct)):
+        if idx not in masks:
+            continue
+
+        mask = masks[idx]
+        # mask to gate
+        for key, val in dict_.items():
+            if type(key) == str:
+                gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
+                if gates.shape[0] != val[0][1] - val[0][0]:
+                    return False
+                for v_ in val:
+                    gates.assign(mask[v_[0]:v_[1]])
+                    break
     # test
     try:
         cutmodel = parser.cut(gated_model)
@@ -1129,12 +1125,26 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         print(e)
         return False
 
+
+    print(gated_model.count_params(), cutmodel.count_params())
+    if gated_model.count_params() == cutmodel.count_params():
+        print("fail!")
+        return False
+
     if ret_model:
         return cutmodel
     else:
         print(gated_model.output.shape, cutmodel.output.shape)
 
-    net = TFNet(cutmodel, custom_objects=parser.custom_objects)
+    if not pruning_exit:
+        net = TFNet(cutmodel, custom_objects=parser.custom_objects)
+    else:
+        net = TFNet(gated_model, custom_objects=parser.custom_objects)
+        gate_mapping = {}
+        for key, value in gm.items():
+            # json serialization
+            gate_mapping[key[0]] = value
+        net.meta["gate_mapping"] = gate_mapping
     return net
 
 

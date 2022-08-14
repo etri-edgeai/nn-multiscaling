@@ -20,7 +20,7 @@ class PruningGenerator(Generator):
     def __init__(self, namespace):
         super(PruningGenerator, self).__init__(namespace)
 
-    def generate(self, net, scales=None, init=False, sample_data=None, custom_objects=None):
+    def generate(self, net, scales=None, init=False, sample_data=None, pruning_exit=False, custom_objects=None):
         if scales is None:
             scales = [0.125, 0.25, 0.5, 0.75]
 
@@ -29,7 +29,7 @@ class PruningGenerator(Generator):
             if sample_data is None:
                 alter = B.prune(net, scale, self._namespace, init=init, custom_objects=custom_objects)
             else:
-                alter = B.prune_with_sampling(net, scale, self._namespace, sample_data, init=init, custom_objects=custom_objects)
+                alter = B.prune_with_sampling(net, scale, self._namespace, sample_data, init=init, pruning_exit=pruning_exit, custom_objects=custom_objects)
             if not alter:
                 return False
             alternatives.append(alter)
