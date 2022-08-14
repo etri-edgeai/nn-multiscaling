@@ -17,22 +17,23 @@ from profile import measure
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
 
-#dir_ = "experiments/imagenet_efnetb2_200_1_approx"
-#model_file = os.path.join(dir_, "base.h5")
+dir_ = "experiments/imagenet_efnet2_200_200_02_sgd_approx/students"
+model_file = os.path.join(dir_, "nongated_studenttest.h5")
 
 from keras_flops import get_flops
-#model = tf.keras.models.load_model(model_file)
+model = tf.keras.models.load_model(model_file, custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
 
-from efficientnet.tfkeras import EfficientNetB0
-model = EfficientNetB0(weights='imagenet')
-from tensorflow.keras.applications import EfficientNetB2
-model = tf.keras.applications.efficientnet.EfficientNetB2(
-    include_top=True, weights='imagenet', input_tensor=None, input_shape=(260, 260, 3), pooling=None, classes=1000,
-    classifier_activation='softmax')
+#print(model.summary())
+#from efficientnet.tfkeras import EfficientNetB2
+#model = EfficientNetB2(weights='imagenet', input_shape=(260, 260, 3))
+
+#from tensorflow.keras.applications import EfficientNetB0
+#model = tf.keras.applications.efficientnet.EfficientNetB0(
+#    include_top=True, weights='imagenet', input_tensor=None, input_shape=(224, 224, 3), pooling=None, classes=1000,
+#    classifier_activation='softmax')
 
 print(get_flops(model))
 
-xxx
 # remove front
 flag = False
 for layer in model.layers:
@@ -48,7 +49,7 @@ else:
     removal_cpu = 0
     removal_gpu = 0
 
-print(model.summary())
+#print(model.summary())
 
 #print(measure(model, mode="trt"))
 #print(measure(model, mode="gpu"))
@@ -56,5 +57,5 @@ print(model.summary())
 #print(measure(model, mode="cpu"))
 #print(measure(model, mode="tflite", batch_size=1))
 print(measure(model, mode="onnx_cpu") - removal_cpu)
-print(measure(model, mode="onnx_gpu") - removal_gpu)
+#print(measure(model, mode="onnx_gpu") - removal_gpu)
 print(model.count_params())

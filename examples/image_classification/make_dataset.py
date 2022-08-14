@@ -61,7 +61,7 @@ custom_objects = {
 }
 
 
-def validate(model, model_handler, dataset):
+def validate(model, model_handler, dataset, sampling_ratio=1.0):
     custom_objects = {
         "SimplePruningGate":SimplePruningGate,
         "StopGradientLayer":StopGradientLayer
@@ -77,13 +77,14 @@ def validate(model, model_handler, dataset):
         dataset,
         model_handler,
         training_augment=False,
+        sampling_ratio=sampling_ratio*10,
         n_classes=n_classes)
     model_handler.compile(model, run_eagerly=False)
     return model.evaluate(test_data_generator, verbose=1)[1]
 
-def finetune(model_path, teacher_path, targets, model_name, config_path, epochs, lr=0.1):
+def finetune(model_path, teacher_path, targets, model_name, config_path, epochs, lr=0.1, sampling_ratio=1.0):
     silence_tensorflow()
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3,4,5,6,7'
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
@@ -137,7 +138,7 @@ def finetune(model_path, teacher_path, targets, model_name, config_path, epochs,
         mixed_precision.set_global_policy('mixed_float16')
         model = change_dtype(model, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
 
-    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects)
+    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=config["training_conf"]["mixup_alpha"] > 0, do_cutmix=config["training_conf"]["cutmix_alpha"] > 0, custom_objects=custom_objects, update_batch_size=True)
 
     teacher = tf.keras.models.load_model(teacher_path, custom_objects=custom_objects)
     teacher = remove_augmentation(teacher, custom_objects=custom_objects)
@@ -169,7 +170,7 @@ def finetune(model_path, teacher_path, targets, model_name, config_path, epochs,
         epochs,
         augment=True,
         n_classes=config["num_classes"],
-        sampling_ratio=config["sampling_ratio"],
+        sampling_ratio=sampling_ratio,
         save_dir=dirname,
         conf=tconf)
 
@@ -243,21 +244,21 @@ def run():
                 mh.get_node(t)
                 for t in targets_
             ]
-            gated, non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
+            non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
             if len(ex_maps) == 0:
                 continue
 
             filepath = os.path.join(dirpath, "current.h5")
-            tf.keras.models.save_model(gated, filepath, overwrite=True, include_optimizer=False)
+            tf.keras.models.save_model(non_gated, filepath, overwrite=True, include_optimizer=False)
             with open(os.path.join(dirpath, "current.map"), "w") as file_:
                 json.dump(ex_maps, file_)
 
-            acc = validate(gated, model_handler, config["dataset"])
+            acc = validate(non_gated, model_handler, config["dataset"], args.sampling_ratio)
             print(acc)
-            horovod.run(finetune, (filepath, os.path.join(dirpath, "base.h5"), targets_, args.model_name, args.config, args.epochs, 0.1), np=3, use_mpi=True)
+            horovod.run(finetune, (filepath, os.path.join(dirpath, "base.h5"), targets_, args.model_name, args.config, args.epochs, 0.02, args.sampling_ratio), np=7, use_mpi=True)
 
             ret = tf.keras.models.load_model(os.path.join(dirpath, "ret.h5"), custom_objects=custom_objects)
-            acc = validate(ret, model_handler, config["dataset"])
+            acc = validate(ret, model_handler, config["dataset"], args.sampling_ratio)
             print(targets_, acc)
             records.append(
                 (targets_, acc)
