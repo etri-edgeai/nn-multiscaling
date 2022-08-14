@@ -107,9 +107,9 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
             DEVICE_NAME = "cpu"
             DEVICE_INDEX = 0
         elif mode == "onnx_gpu":
-            providers = [('CUDAExecutionProvider', {"device_id":1})]
+            providers = [('CUDAExecutionProvider', {"device_id":0})]
             DEVICE_NAME = "cuda"
-            DEVICE_INDEX = 1
+            DEVICE_INDEX = 0
         else:
             raise NotImplementedError("check your mode: %s" % mode)
         m = rt.InferenceSession(output_path, providers=providers)
@@ -259,18 +259,22 @@ def run():
         data[key] = profile
 
         if "app" in val["tag"]:
-            #rmodel_path = os.path.join(dir_, "nets", val["origin"]+".h5")
-            #reference_model = tf.keras.models.load_model(rmodel_path)
-            mh.get_node(val["origin"]).net.wakeup()
-            reference_model = mh.get_node(val["origin"]).net.model
-            parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
-            parser.parse()
-            model_ = parser.cut(model)
-            print(model.count_params(), model_.count_params())
-            model = model_
-            print("ORIGIN:", data[val["origin"]])
-            print(acc)
-            mh.get_node(val["origin"]).net.sleep()
+            is_gated = False
+            for layer in model.layers:
+                if layer.__class__ == SimplePruningGate:
+                    is_gated = True
+                    break
+            
+            if is_gated:
+                mh.get_node(val["origin"]).net.wakeup()
+                reference_model = mh.get_node(val["origin"]).net.model
+                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
+                parser.parse()
+                model_ = parser.cut(model)
+                print(model.count_params(), model_.count_params())
+                model = model_
+                print("ORIGIN:", data[val["origin"]])
+                mh.get_node(val["origin"]).net.sleep()
 
         #if "flops" in profile:
         #    flops = profile["flops"]

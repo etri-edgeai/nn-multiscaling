@@ -734,7 +734,8 @@ def run():
         assert base_value > 0
         obj_value = args.obj_ratio
         metric = args.metric
-        non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
+        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
+        student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
         filepath = student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
         student_dir = os.path.dirname(filepath)
         basename = os.path.splitext(os.path.basename(filepath))[0]

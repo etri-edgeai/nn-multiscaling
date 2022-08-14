@@ -244,16 +244,16 @@ def run():
                 mh.get_node(t)
                 for t in targets_
             ]
-            non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
+            gated, non_gated, ex_maps = mh._parser.extract(mh.origin_nodes, target_nodes, return_gated_model=True)
             if len(ex_maps) == 0:
                 continue
 
             filepath = os.path.join(dirpath, "current.h5")
-            tf.keras.models.save_model(non_gated, filepath, overwrite=True, include_optimizer=False)
+            tf.keras.models.save_model(gated, filepath, overwrite=True, include_optimizer=False)
             with open(os.path.join(dirpath, "current.map"), "w") as file_:
                 json.dump(ex_maps, file_)
 
-            acc = validate(non_gated, model_handler, config["dataset"], args.sampling_ratio)
+            acc = validate(gated, model_handler, config["dataset"], args.sampling_ratio)
             print(acc)
             horovod.run(finetune, (filepath, os.path.join(dirpath, "base.h5"), targets_, args.model_name, args.config, args.epochs, 0.02, args.sampling_ratio), np=7, use_mpi=True)
 
