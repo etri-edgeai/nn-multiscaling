@@ -661,9 +661,10 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         for cg in cgroups:
             if n.net.model.input.name in cg:
                 for l in cg:
-                    gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
-                    gates = n.net.model.get_layer(gate_name).gates
-                    gates.assign(np.ones(gates.shape[-1],))
+                    if "gate_mapping" in n.net.meta:
+                        gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
+                        gates = n.net.model.get_layer(gate_name).gates
+                        gates.assign(np.ones(gates.shape[-1],))
 
         for t in last:
             if "gate_mapping" in n.net.meta:
