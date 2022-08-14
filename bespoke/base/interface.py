@@ -77,7 +77,7 @@ def score_f(obj_value, base_value, metric, lda, nodes):
                 approx_value = approx_value - on._profile[metric] + n._profile[metric]
             else:
                 approx_value = approx_value - n._profile[metric]
-            sum_iacc = on._profile["iacc"] - n._profile["iacc"]
+            sum_iacc += on._profile["iacc"] - n._profile["iacc"]
         sum_mse += n._profile["mse"]
 
     score = max(approx_value / obj_value, 1.0) + sum_iacc * lda

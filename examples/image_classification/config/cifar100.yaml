@@ -10,7 +10,6 @@ models:
   - EfficientNetV2S
   - ResNetRS101
   - ResNetRS152
-  - RegNetX002
 
 lr: 0.001
 sampling_ratio: 1.0
@@ -24,20 +23,21 @@ batch_size_limit: 32 # for profiling
 num_partitions: 50
 num_imported_submodels: 50
 num_approx: 50
-num_submodels_per_bunch: 100
+num_submodels_per_bunch: 50
 num_samples_for_profiling: 5
 num_epochs: 20
+pruning_exit: false
 
 training_conf:
   use_amp: true
   lr_name: "cosine_restart"
-  initial_lr: 0.0001
+  initial_lr: 0.005
   t_mul: 2.0
   m_mul: 1.0
   alpha: 1.0e-7
   decay_epochs: 10.0
   decay_rate: 0.97
-  warmup_epochs: 5
+  warmup_epochs: 0
   opt_name: "adam"
   decay: 0.9
   epsilon: 1.0e-7
@@ -53,7 +53,7 @@ training_conf:
   hvd_fp16_compression: true
   intratrain_eval_using_ema: true
   label_smoothing: 0.1   
-    
-    
+  cutmix_alpha: 0.1    
+  mixup_alpha: 0.1
   
  
