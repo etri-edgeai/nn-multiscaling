@@ -122,7 +122,7 @@ class ModelHouse(object):
                 na.sleep()
         self._nodes.extend(nodes_)
 
-    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, data=None):
+    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, pruning_exit=False, data=None):
         if data is not None:
             self.build_sample_data(data)
 
@@ -134,7 +134,7 @@ class ModelHouse(object):
             tag = "app_origin" if n.tag == "origin" else "app_alter"
             scale = np.random.choice([0.25, 0.375, 0.5, 0.625, 0.75, 0.875])
             sample_data = self._sample_inputs[n.pos[0]]
-            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init)
+            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init, pruning_exit=pruning_exit)
 
             if not alters:
                 continue
@@ -261,6 +261,7 @@ class ModelHouse(object):
         self._sample_outputs = {}
         for n in self._nodes:
             if n.is_original():
+                print(n.id_)
                 ret = B.build_samples(self._model, data, n.pos)
                 self._sample_inputs[n.pos[0]] = [ret_[0] for ret_ in ret]
                 self._sample_outputs[n.pos[1]] = [ret_[1] for ret_ in ret]
