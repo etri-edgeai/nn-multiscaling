@@ -137,7 +137,7 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
     silence_tensorflow()
     num_gpus = len(tf.config.list_physical_devices('GPU'))
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = ",".join([str(c) for c in list(range(1,num_gpu))])
+    os.environ['CUDA_VISIBLE_DEVICES'] = ",".join([str(c) for c in list(range(1,num_gpus))])
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices) > 0:
