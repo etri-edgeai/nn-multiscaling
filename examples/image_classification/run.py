@@ -135,7 +135,9 @@ def validate(model, test_data_gen, model_handler):
 
 def transfer_learning_(model_path, model_name, config_path, lr=0.1): 
     silence_tensorflow()
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3,4,5,6,7'
+    num_gpus = len(tf.config.list_physical_devices('GPU'))
+    
+    os.environ['CUDA_VISIBLE_DEVICES'] = ",".join([str(c) for c in list(range(1,num_gpu))])
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices) > 0:
@@ -269,12 +271,7 @@ def transfer_learning(dataset, mh, model_name, model_handler, config_path, targe
                 dirpath = "test"
                 B.save_transfering_model(dirpath, house, output_idx, output_map)
 
-                """
-                print(subprocess.run([
-                    f"CUDA_VISIBLE_DEVICES=0,1,2 horovodrun -np 3 python run.py --model_path {os.path.join(dirpath, 'model.h5')} --mode finetune --trmode --model_name {model_name} --sampling_ratio 1.0 --num_epochs {num_epochs} --config {config_path} --postfix _ignore"
-                ], shell=True))
-                """
-                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=7, use_mpi=True)
+                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), model_name, config_path), np=len(tf.config.list_physical_devices('GPU'))-1, use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
                     raise Exception("err")
