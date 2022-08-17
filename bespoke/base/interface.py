@@ -214,7 +214,7 @@ class ModelHouse(object):
                 iter_ += 1
 
         score_func = lambda state: score_f(obj_value, base_value, metric, lda, state.selected_nodes)
-        sa = SimulatedAnnealingSolver(score_func, max_niters=10000)
+        sa = SimulatedAnnealingSolver(score_func, max_niters=5000)
         init_state = ModelState(minimal, nodes, self._parser, metric)
         last, best = sa.solve(init_state)
         minimal = best.selected_nodes
