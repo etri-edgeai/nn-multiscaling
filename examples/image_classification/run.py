@@ -589,6 +589,9 @@ def run():
         distill_set = set()
         if args.teacher_path is not None:
             ex_map_filepath = os.path.join(dirname, basename+".map")
+            if not os.path.exists(ex_map_filepath):
+                ex_map_filepath = os.path.join(dirname, "non"+basename+".map")
+
             with open(ex_map_filepath, "r") as map_file:
                 ex_maps = json.load(map_file)
 
@@ -614,6 +617,9 @@ def run():
                 teacher = change_dtype(teacher, mixed_precision.global_policy(), custom_objects=custom_objects, distill_set=distill_set)
 
             ex_map_filepath = os.path.join(dirname, basename+".map")
+            if not os.path.exists(ex_map_filepath):
+                ex_map_filepath = os.path.join(dirname, "non"+basename+".map")
+
             with open(ex_map_filepath, "r") as map_file:
                 ex_maps = json.load(map_file)
 

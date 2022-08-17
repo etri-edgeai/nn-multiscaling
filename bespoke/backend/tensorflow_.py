@@ -641,6 +641,8 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             if type(last) == str:
                 last = [last]
             for t in last:
+                if t not in cgm:
+                    continue
                 gate_name = cgm[t][0]["config"]["name"]
                 exit_gates[t] = n.net.model.get_layer(gate_name).gates.numpy()
 
@@ -940,7 +942,7 @@ def get_basemodel_path(dir_):
     return os.path.join(dir_, "base.h5")
     
 
-def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=False):
+def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
 
     # TODO: needs improvement
     """
@@ -957,12 +959,12 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     """
 
     if type(net) == TFNet:
-        parser = PruningNNParser(net.model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(net.model, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
     else:
-        parser = PruningNNParser(net, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(net, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
     parser.parse()
 
-    gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=True, with_mapping=True)
+    gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=pruning_exit, with_mapping=True)
     if init:
         gated_model = tf.keras.models.clone_model(gated_model)
     for layer in gated_model.layers:
@@ -974,6 +976,16 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     last_transformers = parser.get_last_transformers()
     target_groups, gate_struct = parser.get_group_topology()
     for idx, (g, dict_) in enumerate(zip(target_groups, gate_struct)):
+        if not pruning_exit:
+            skip = False
+            for key, val in dict_.items():
+                if type(key) == str:
+                    if key in last_transformers:
+                        skip = True
+                        break
+            if skip:
+                continue
+
         items = []
         max_ = 0
         for key, val in dict_.items():
@@ -1026,23 +1038,34 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
                 if gates.shape[0] != val[0][1] - val[0][0]:
                     return False
                 gates.assign(mask[val[0][0]:val[0][1]])
+
     # test
-    cutmodel = parser.cut(gated_model)
+    try:
+        cutmodel = parser.cut(gated_model)
+    except Exception as e:
+        print(e)
+        return False
+
+    print(gated_model.count_params(), cutmodel.count_params())
+    if gated_model.count_params() == cutmodel.count_params():
+        print("fail!")
+        return False
+
     if ret_model:
         return cutmodel
     else:
         print(gated_model.output.shape, cutmodel.output.shape)
 
-    return TFNet(cutmodel, custom_objects=parser.custom_objects)
-    """
-    net = TFNet(gated_model, custom_objects=parser.custom_objects)
-    gate_mapping = {}
-    for key, value in gm.items():
-        # json serialization
-        gate_mapping[key[0]] = value
-    net.meta["gate_mapping"] = gate_mapping
+    if not pruning_exit:
+        net = TFNet(cutmodel, custom_objects=parser.custom_objects)
+    else:
+        net = TFNet(gated_model, custom_objects=parser.custom_objects)
+        gate_mapping = {}
+        for key, value in gm.items():
+            # json serialization
+            gate_mapping[key[0]] = value
+        net.meta["gate_mapping"] = gate_mapping
     return net
-    """
 
 def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
 

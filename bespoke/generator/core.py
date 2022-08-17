@@ -26,7 +26,7 @@ class PruningGenerator(Generator):
 
         alternatives = []
         for idx, scale in enumerate(scales):
-            if sample_data is None:
+            if sample_data is None or random.random() > 0.5:
                 alter = B.prune(net, scale, self._namespace, init=init, custom_objects=custom_objects)
             else:
                 alter = B.prune_with_sampling(net, scale, self._namespace, sample_data, init=init, pruning_exit=pruning_exit, custom_objects=custom_objects)
