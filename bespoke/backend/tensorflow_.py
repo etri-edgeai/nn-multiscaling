@@ -665,7 +665,16 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         if type(last) == str:
             last = [last]
         cgroups = cparser[n.id_].get_sharing_groups()
-   
+
+        for t in last:
+            found = False
+            for cg in cgroups:
+                if t in cg:
+                    found = True
+                    break
+            if not found:
+                cgroups.append([t])
+
         for cg in cgroups:
             if n.net.model.input.name in cg:
                 for l in cg:
@@ -683,6 +692,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                             gates = n.net.model.get_layer(gate_name).gates
                             backup[gate_name] = gates.numpy()
                             gates.assign(np.ones(gates.shape[-1],))
+                            print(gates.shape)
                         break
         
         cmodel = n.get_cmodel()
