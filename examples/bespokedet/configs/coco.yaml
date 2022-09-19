@@ -1,0 +1,84 @@
+models:
+  - ResNet50V2
+  - InceptionResNetV2
+  - MobileNetV2
+  - MobileNet
+  - EfficientNetB1
+  - EfficientNetV2B1
+  - EfficientNetV2S
+  - ResNetRS101
+  - ResNetRS152
+
+dloss_scale: 0.5
+memory_limit: 0
+params_limit: 0
+step_ratio: 0.2 # ste
+astep_ratio: 0.1 # ste
+num_partitions: 50
+num_imported_submodels: 50
+num_approx: 50
+num_submodels_per_bunch: 100
+num_samples_for_profiling: 5
+num_epochs: 20
+pruning_exit: false
+
+task:
+  model_name: "efficientdet-d3"
+  base_ckpt_path: "pretrained_weights/efficientdet-d3" 
+  model_dir: "temp"
+  mixed_precision: "mixed_float16"
+  strategy: "gpus"
+  use_fake_data: true
+  use_xla: false
+  batch_size: 2
+  eval_samples: 5000
+  mode: "traineval"
+  examples_per_epoch: 120000
+  epochs: 10
+  num_shards: 4
+  train_file_pattern: "tfrecord/train*.tfrecord"
+  val_file_pattern: "tfrecord/val*.tfrecord"
+  image_size: 896
+  val_json_file: "automl/efficientdet/annotations/instances_val2017.json"
+  max_level: 7
+  min_level: 3
+  num_scales: 3
+  aspect_ratios:
+    - 1.0
+    - 2.0
+    - 0.5
+  anchor_scale: 4.0
+  num_classes: 90
+  heads:
+    - "object_detection"
+  regenerate_source_id: False
+  skip_crowd_during: True
+  groundtruth_is_crowd: null
+  input_rand_hflip: True
+  jitter_min: 0.1
+  jitter_max: 2.0
+  scale_range: False
+  max_instances_per_image: 100
+  use_fake_data:
+  grid_mask: False
+  autoaugment_policy: null
+  target_size: null
+  tf_random_seed:
+  dataset_type: null
+  drop_remainder: True
+  debug: false
+
+  optimizer: "sgd"
+  momentum: 0.9
+  moving_average_decay: 0.999
+  mixed_precision:
+  weight_decay: 4.0e-5
+  loss_scale: null
+  use_hvd: False
+
+  delta: 0.1
+  iou_loss_type: null
+  alpha: 0.25
+  gamma: 1.5
+  use_distillation: True
+  label_smoothing: 0.0
