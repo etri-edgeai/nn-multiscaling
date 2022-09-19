@@ -57,7 +57,7 @@ class PretrainedModelGenerator(Generator):
             nets = tmodel_parser.get_random_subnets(
                 num=1,
                 target_shapes=(input_shape, output_shape),
-                target_type=B.get_type(net.model, last),
+                target_type=last,
                 memory_limit=memory_limit,
                 params_limit=params_limit,
                 history=history,

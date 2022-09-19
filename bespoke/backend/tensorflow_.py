@@ -34,11 +34,12 @@ STOP_POINTS = [
     tf.keras.layers.Multiply
 ]
 
+
 def preprocess(model, namespace, custom_objects):
     model = unfold(model, custom_objects)
     return model, TFParser(model, namespace, custom_objects)
 
-def equivalent(a, b):
+def _equivalent(a, b):
 
     if a.__class__.__name__ == "Activation":
         a = a.activation
@@ -62,6 +63,37 @@ def equivalent(a, b):
         return True
     else:
         return False
+
+
+
+def _equivalent_v2(a, b):
+
+    def has_normalization(x):
+        for _x in x:
+            if _x.__class__.__name__ not in ["type", "function"]:
+                _x = _x.__class__
+            if "Normalization" in _x.__name__:
+                return True
+
+    dist_consistency = has_normalization(a) == has_normalization(b)
+    if dist_consistency:
+        a_last = a[-1]
+        b_last = b[-1]
+        if a_last.__class__.__name__ not in ["type", "function"]:
+            a_last = a_last.__class__
+        if b_last.__class__.__name__ not in ["type", "function"]:
+            b_last = b_last.__class__
+
+        if a_last.__name__ != "Activation" and b_last.__name__ != "Activation":
+            return True
+        else:
+            return _equivalent(a[-1], b[-1])
+    else:
+        return False
+
+
+def equivalent(a, b):
+    return _equivalent_v2(a, b)
 
 class TFParser(common.Parser):
 
@@ -196,7 +228,7 @@ class TFParser(common.Parser):
                     continue
                 history.add((self._parser.model.name, left, right))
 
-                if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type):
+                if target_type is not None and not equivalent(self.get_last_types(), target_type):
                     continue
 
                 if target_shapes is not None:
@@ -459,6 +491,12 @@ class TFParser(common.Parser):
 
     def get_uniform_subsets(self, num=5):
         pass
+
+    def get_last_types(self):
+        rtrank = sorted(list(self._rtrank.keys()))
+        return [
+            self._model.get_layer(self._rtrank[l]).__class__ for l in rtrank[-2:]
+        ]
 
     def build(self):
         # construct t-rank

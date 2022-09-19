@@ -113,8 +113,13 @@ class ModelHouse(object):
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)
+            n.wakeup()
+            _, parser = B.preprocess(n.net.model, set(), self._custom_objects) # dummy namespace
+            last_types = parser.get_last_types()
+            n.sleep()
             alters = gen_.generate(
-                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+                n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+            #    n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
