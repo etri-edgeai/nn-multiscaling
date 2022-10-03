@@ -1,4 +1,5 @@
 import os
+import copy
 
 import horovod.tensorflow.keras as hvd
 from automl.efficientdet.tf2.train import setup_model
@@ -6,8 +7,7 @@ import tensorflow as tf
 from automl.efficientdet.tf2 import train_lib
 
 def setup_optimizer(
-    config,
-    use_hvd=False):
+    config):
     """`train_lib.get_optimizer` caller
 
         Args.
@@ -23,11 +23,11 @@ def setup_optimizer(
 
     """
 
-    optimizer = train_lib.get_optimizer(config)
+    optimizer = train_lib.get_optimizer(copy.deepcopy(config))
 
-    if use_hvd:
+    if config["use_hvd"]:
         optimizer = hvd.DistributedOptimizer(
-            optimizer, compression=hvd.Compression.fp16 if config["mixed_precision"]=="mixed_float16" else hvd.Compression.none)
+            optimizer, compression=hvd.Compression.fp16 if config["mixed_precision"] else hvd.Compression.none)
 
     return optimizer
 
@@ -104,7 +104,7 @@ def train(
     prefix=None,
     save_dir=None,
     callbacks=None,
-    use_hvd=True):
+    use_hvd=False):
     """Train function
 
         Args.
@@ -121,7 +121,7 @@ def train(
 
     """
 
-    if callbacks is None:
+    if callbacks is None or (use_hvd and hvd_local_rank() != 0):
         callbacks = []
 
     if use_hvd:
@@ -165,6 +165,7 @@ def train(
     model_history = model.fit(train_dataset,
                               validation_data=val_dataset,
                               callbacks=callbacks,
+                              initial_epoch=model.optimizer.iterations.numpy() // num_iters,
                               verbose=1 if hvd.local_rank() == 0 else 0,
                               epochs=epochs,
                               steps_per_epoch=num_iters,

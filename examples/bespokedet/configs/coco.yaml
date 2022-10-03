@@ -23,30 +23,26 @@ num_epochs: 20
 pruning_exit: false
 
 task:
-  model_name: "efficientdet-d3"
-  base_ckpt_path: "pretrained_weights/efficientdet-d3" 
-  model_dir: "temp"
+  model_name: "efficientdet-d0"
+  base_ckpt_path: "pretrained_weights/efficientdet-d0" 
+  model_dir: "temp_coco"
   mixed_precision: "mixed_float16"
-  strategy: "gpus"
-  use_fake_data: true
+  strategy: ""
+  use_fake_data: false
   use_xla: false
-  batch_size: 2
+  batch_size: 4
   eval_samples: 5000
   mode: "traineval"
-  examples_per_epoch: 120000
-  epochs: 10
+  num_examples_per_epoch: 120000
+  num_epochs: 10
   num_shards: 4
   train_file_pattern: "tfrecord/train*.tfrecord"
   val_file_pattern: "tfrecord/val*.tfrecord"
-  image_size: 896
+  image_size: 1280
   val_json_file: "automl/efficientdet/annotations/instances_val2017.json"
   max_level: 7
   min_level: 3
   num_scales: 3
-  aspect_ratios:
-    - 1.0
-    - 2.0
-    - 0.5
   anchor_scale: 4.0
   num_classes: 90
   heads:
@@ -59,7 +55,6 @@ task:
   jitter_max: 2.0
   scale_range: False
   max_instances_per_image: 100
-  use_fake_data:
   grid_mask: False
   autoaugment_policy: null
   target_size: null
@@ -68,7 +63,7 @@ task:
   drop_remainder: True
   debug: false
 
-  optimizer: "sgd"
+  optimizer: "adam"
   momentum: 0.9
   moving_average_decay: 0.999
   mixed_precision:
@@ -81,4 +76,4 @@ task:
   alpha: 0.25
   gamma: 1.5
   use_distillation: True
-  label_smoothing: 0.0
+  label_smoothing: 0.1

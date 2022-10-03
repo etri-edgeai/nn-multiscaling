@@ -18,6 +18,13 @@ MODELS = [
 ]
 
 endpoints = {
+    "EfficientNetB0":[
+        "block1a_project_bn",
+        "block2b_add",
+        "block3b_add",
+        "block5c_add",
+        "block7a_project_bn"
+    ],
     "EfficientNetB1":[
         "block1b_add",
         "block2c_add",
@@ -49,17 +56,10 @@ def get_model(model_name, config):
         if model_name in model_.__name__:
             model_class = model_
             break
-    model = model_class(weights="imagenet", include_top=False)
-    tf.keras.utils.plot_model(model, "backbone.png", show_shapes=True)
+    model = model_class(weights="imagenet", include_top=False, input_shape=(*config["task"]["image_size"], 3))
+    #tf.keras.utils.plot_model(model, "backbone.png", show_shapes=True)
     outputs = [
         layer.output for layer in model.layers if layer.name in endpoints[model_name]
     ]
-    model = tf.keras.Model(inputs=model.inputs, outputs=[model.outputs]+outputs)
-
-    x_ = tf.keras.Input(shape=model.input.shape[1:])
-    xs = model(x_)
-    x = tf.keras.layers.GlobalAveragePooling2D()(xs[0][0])
-    x = tf.keras.layers.Dropout(0.5)(x)
-    y = tf.keras.layers.Dense(config["task"]["num_classes"], activation='softmax')(x)
-
-    return tf.keras.Model(inputs=x_, outputs=[y] + xs[1:])
+    model = tf.keras.Model(inputs=model.inputs, outputs=[outputs[-1]]+outputs)
+    return model
