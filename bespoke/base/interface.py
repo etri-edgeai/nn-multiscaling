@@ -107,9 +107,9 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1):
+    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1, input_shape=None):
         nodes_ = []
-        gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
+        gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list, input_shape=input_shape)
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)

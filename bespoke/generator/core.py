@@ -37,9 +37,9 @@ class PruningGenerator(Generator):
 
 class PretrainedModelGenerator(Generator):
 
-    def __init__(self, namespace, model_list=None):
+    def __init__(self, namespace, model_list=None, input_shape=None):
         super(PretrainedModelGenerator, self).__init__(namespace)
-        self.models = B.generate_pretrained_models(model_list)
+        self.models = B.generate_pretrained_models(model_list, input_shape)
         for m in self.models:
             m.build()
 

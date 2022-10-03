@@ -132,6 +132,11 @@ class TFParser(common.Parser):
             layer.name for layer in self._parser.model.layers if layer.__class__ in STOP_POINTS
         ]
 
+        model_outputs = set([
+            output.name.split("/")[0] # layer name
+            for output in self._parser.model.outputs
+        ])
+
         stops = sorted(stops, key=lambda x: self._trank[x])
         nets = []
         if history is None:
@@ -224,6 +229,14 @@ class TFParser(common.Parser):
                     self._model.get_layer(self._rtrank[j])
                     for j in range(left, right+1)
                 ]
+
+                invalid = False
+                for layer in layers_[:-1]:
+                    if layer.name in model_outputs:
+                        invalid = True
+                        break
+                if invalid:
+                    continue
 
                 if not self._is_compressible(layers_):
                     continue
@@ -771,7 +784,15 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
 
     # Conduct replace_block
     model_dict = parser.replace_block(replacing_mappings, in_maps, ex_maps, parser.custom_objects)
-    model_json = json.dumps(model_dict) 
+
+    previous_outputs = model_dict["config"]["output_layers"]
+    for pout in previous_outputs: # name based
+        for ex_map in ex_maps:
+            for map_ in ex_map:
+                if pout[0] == map_[0][0]:
+                    pout[0] = map_[0][1]
+
+    model_json = json.dumps(model_dict)
     try:
         model = tf.keras.models.model_from_json(model_json, custom_objects=parser.custom_objects)
     except Exception as e:
@@ -783,6 +804,8 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             print("---")
         import sys, traceback
         traceback.print_exc(file=sys.stdout)
+        with open("debug.json", "w") as f:
+            json.dump(model_dict, f)
         sys.exit()
 
     not_det = set()
@@ -1245,7 +1268,6 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         print(e)
         return False
 
-
     print(gated_model.count_params(), cutmodel.count_params())
     if gated_model.count_params() == cutmodel.count_params():
         print("fail!")
@@ -1292,7 +1314,7 @@ def load_model(filepath, custom_objects=None):
                 #layer.trainable = False
         return model
 
-def generate_pretrained_models(list_=None):
+def generate_pretrained_models(list_=None, input_shape=None):
     baselist = [
         tf.keras.applications.ResNet50V2,
         tf.keras.applications.InceptionResNetV2,
@@ -1305,8 +1327,8 @@ def generate_pretrained_models(list_=None):
         tf.keras.applications.EfficientNetV2S,
         tf.keras.applications.resnet_rs.ResNetRS152,
         tf.keras.applications.resnet_rs.ResNetRS101,
-        tf.keras.applications.regnet.RegNetX002,
-        tf.keras.applications.regnet.RegNetX004
+        #tf.keras.applications.regnet.RegNetX002,
+        #tf.keras.applications.regnet.RegNetX004
     ]
     dict_ = {
         class_.__name__:class_ for class_ in baselist
@@ -1317,7 +1339,12 @@ def generate_pretrained_models(list_=None):
     for name in list_:
         if name in dict_:
             w = dict_[name]
-            models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000), namespace=set()))
+            try:
+                models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000, input_shape=input_shape), namespace=set()))
+            except ValueError as e:
+                print(e)
+                print("try with the default image dim")
+                models.append(TFParser(w(include_top=True, weights="imagenet", classes=1000), namespace=set()))
     return models
 
 def get_type(model, layer_name=None):
