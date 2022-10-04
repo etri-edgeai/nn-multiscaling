@@ -134,34 +134,6 @@ def train(
             os.makedirs(save_dir)
         filepath = os.path.join(save_dir, name_)
 
-        """
-        if conf is not None and conf["moving_average_decay"] > 0:
-            mchk = custom_callbacks.AverageModelCheckpoint(update_weights=False,
-                                          filepath=filepath,
-                                          monitor=metric,
-                                          verbose=0,
-                                          save_best_only=True,
-                                          save_weights_only=False,
-                                          mode="auto",
-                                          save_freq="epoch")
-            func = model.save
-            model.save = lambda filepath, overwrite=True, options=None:\
-                func(filepath, overwrite=overwrite, include_optimizer=False, options=options)
-
-        else:
-            mchk = keras.callbacks.ModelCheckpoint(
-                filepath=filepath,
-                monitor=metric,
-                verbose=0,
-                save_best_only=True,
-                save_weights_only=False,
-                mode="auto",
-                save_freq="epoch",
-                options=None,
-            )
-        callbacks.append(mchk)
-        """
-
     model_history = model.fit(train_dataset,
                               validation_data=val_dataset,
                               callbacks=callbacks,

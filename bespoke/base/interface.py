@@ -5,12 +5,12 @@ import json
 import pickle
 import os
 import copy
+import random
 
 import numpy as np
 
 from bespoke import backend as B
 from bespoke.base.topology import Node
-from bespoke.generator import *
 
 from nncompress.algorithms.solver.solver import State
 from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingSolver
@@ -106,43 +106,6 @@ class ModelHouse(object):
             self._nodes = []
         self._sample_inputs = None
         self._sample_outputs = None
-
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1, input_shape=None):
-        nodes_ = []
-        gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list, input_shape=input_shape)
-        while len(nodes_) < min_num:
-            print(len(nodes_))
-            n = np.random.choice(self._nodes)
-            alters = gen_.generate(
-                n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
-            for idx, (a, model_name) in enumerate(alters): 
-                na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
-                na.origin = n
-                nodes_.append(na)
-                na.sleep()
-        self._nodes.extend(nodes_)
-
-    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, pruning_exit=False, data=None):
-        if data is not None:
-            self.build_sample_data(data)
-
-        gen_ = PruningGenerator(self._namespace)
-        nodes_ = []
-        while len(nodes_) < min_num:
-            print(len(nodes_))
-            n = np.random.choice(self._nodes)
-            tag = "app_origin" if n.tag == "origin" else "app_alter"
-            scale = np.random.choice([0.05, 0.075, 0.1, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75])
-            sample_data = self._sample_inputs[n.pos[0]]
-            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init, pruning_exit=pruning_exit)
-
-            if not alters:
-                continue
-
-            for idx, a in enumerate(alters):
-                nodes_.append(Node(self._parser.get_id("anode"), tag, a, pos=n.pos))
-                nodes_[-1].origin = n
-        self._nodes.extend(nodes_)
 
     def get_node(self, id_):
         for n in self._nodes:
@@ -344,37 +307,3 @@ class ModelHouse(object):
 
     def remove(self, node):
         self._nodes.remove(node)
-
-
-def test():
-
-    from tensorflow import keras
-    import tensorflow as tf
-    import numpy as np
-
-    from tensorflow.keras.datasets import cifar10
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
-    model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=(32,32,3), classes=100)
-
-    tf.keras.utils.plot_model(model, to_file="original.png", show_shapes=True)
-
-    mh = ModelHouse(model)
-
-    # random data test
-    data = np.random.rand(1,32,32,3)
-    house = mh.make_train_model()[0]
-
-    tf.keras.utils.plot_model(house, to_file="house.pdf", show_shapes=True)
-    y = house(data)
-
-
-
-
-
-
-   
-
-
-if __name__ == "__main__":
-    test()

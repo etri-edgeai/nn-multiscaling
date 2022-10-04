@@ -50,7 +50,6 @@ from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
 
 from bespoke.base.interface import ModelHouse
-from bespoke.base.builder import RandomHouseBuilder
 from bespoke import config as bespoke_config
 from bespoke import backend as B
 
@@ -357,7 +356,7 @@ def run():
         else:
             model = None
 
-        if args.mode in ["train", "build", "backbone_transfer", "finetune"]:
+        if args.mode in ["train", "backbone_transfer", "finetune"]:
             precision = utils.get_precision(config["task"]["strategy"], config["task"]["mixed_precision"])
             policy = tf.keras.mixed_precision.Policy(precision)
             tf.keras.mixed_precision.set_global_policy(policy)
@@ -376,64 +375,14 @@ def run():
             backbone_transfer(config["task"], model, model_2)
             return
 
-        elif args.mode == "build":
-            assert args.target_dir is not None
-            assert model is not None
-            model_ = post_prep_(config["task"], model, pretrained=args.pretrained)
-            backbone = model_.backbone.model
-            mh = ModelHouse(backbone)
-
         elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
             mh = ModelHouse(None, custom_objects=custom_objects)
             mh.load(args.source_dir)
 
-        # Build if necessary
-        filter_ = None
-        if args.mode == "build":
-            build_time_t1 = time.time()
-            b = RandomHouseBuilder(mh)
-            b.build(config["num_partitions"], config["step_ratio"])
-            mh.build_base(
-                model_list=config["models"],
-                min_num=config["num_imported_submodels"],
-                memory_limit=config["memory_limit"],
-                params_limit=config["params_limit"],
-                step_ratio=config["astep_ratio"],
-                input_shape=(*config["task"]["image_size"], 3))
-            use_tl = True
-            build_time_t2 = time.time()
-            running_time["build_time"].append(build_time_t2 - build_time_t1)
-            mh.save(args.target_dir)
-        elif args.mode == "approx":
-            approx_time_t1 = time.time()
-            def f(n):
-                return "app" in n.tag
-            train_data_generator, _ = load_dataset_(config["task"])
-
-            sample_inputs = []
-            for x,y in train_data_generator:
-                sample_inputs.append(x)
-                if len(sample_inputs) > config["num_samples_for_profiling"]:
-                    break    
-            mh.build_approx(
-                min_num=config["num_approx"],
-                memory_limit=config["memory_limit"],
-                params_limit=config["params_limit"],
-                init=args.init,
-                data=sample_inputs,
-                pruning_exit=config["pruning_exit"])
-            mh.save(args.target_dir)
-            use_tl = True
-            filter_ = lambda n: "app" in n.tag
-            approx_time_t2 = time.time()
-            running_time["approx_time"].append(approx_time_t2 - approx_time_t1)
-        else:
-            use_tl = False
-
         batch_size = config["task"]["batch_size"]
 
         # Transfer learning
-        if use_tl or args.mode == "transfer_learning":
+        if args.mode == "transfer_learning":
             assert args.target_dir is not None
             tl_time_t1 = time.time()
             for n in mh.nodes:
