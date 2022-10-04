@@ -3,7 +3,7 @@ import tqdm
 
 from train import *
 from automl.efficientdet.tf2 import efficientdet_keras
-from automl.efficientdet.tf2 import train_lib
+from automl.efficientdet.tf2 import train_lib, efficientdet_keras
 from automl.efficientdet.tf2 import util_keras
 from automl.efficientdet import hparams_config
 from automl.efficientdet import utils
@@ -141,6 +141,27 @@ def post_prep_(config, model, pretrained=None, detmodel=None, with_head=False):
     detmodel.backbone = FeatureModel(model)
     detmodel = setup_model_(config, detmodel)
     return detmodel
+
+
+def post_prep_infer_(config, model, pretrained=None, detmodel=None, with_head=False):
+    config_ = to_hparam_config(config)
+    if detmodel is None:
+        detmodel = efficientdet_keras.EfficientDetModel(config=config_)
+    detmodel.build((config_.batch_size, *config_.image_size, 3))
+    if pretrained is not None:
+        if with_head:
+            util_keras.restore_ckpt(
+                detmodel, pretrained, config_.moving_average_decay, exclude_layers=['optimizer'])
+        else:
+            util_keras.restore_ckpt(
+                detmodel, pretrained, config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'])
+    else:
+        util_keras.restore_ckpt(
+            detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'], skip_mismatch=True)
+    detmodel.backbone = FeatureModel(model)
+    detmodel = setup_model_(config, detmodel)
+    return detmodel
+
 
 def validate_(config, model):
     train_dataset, valid_dataset = load_dataset_(config)
