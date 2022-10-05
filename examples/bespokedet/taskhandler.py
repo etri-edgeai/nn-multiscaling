@@ -123,10 +123,11 @@ def extract_backbone(config, ckpt=None):
 def replace_backbone(detmodel, new_backbone):
     detmodel.backbone = new_backbone
  
-def post_prep_(config, model, pretrained=None, detmodel=None, with_head=False):
+def post_prep_(config, model, pretrained=None, with_head=False, with_backbone=False):
     config_ = to_hparam_config(config)
-    if detmodel is None:
-        detmodel = train_lib.EfficientDetNetTrain(config=config_)
+    detmodel = train_lib.EfficientDetNetTrain(config=config_)
+    if with_backbone:
+        detmodel.backbone = FeatureModel(model)
     detmodel.build((config_.batch_size, *config_.image_size, 3))
     if pretrained is not None:
         if with_head:
@@ -138,15 +139,17 @@ def post_prep_(config, model, pretrained=None, detmodel=None, with_head=False):
     else:
         util_keras.restore_ckpt(
             detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'], skip_mismatch=True)
-    detmodel.backbone = FeatureModel(model)
+    if not with_backbone:
+        detmodel.backbone = FeatureModel(model)
     detmodel = setup_model_(config, detmodel)
     return detmodel
 
 
-def post_prep_infer_(config, model, pretrained=None, detmodel=None, with_head=False):
+def post_prep_infer_(config, model, pretrained=None, with_head=False, with_backbone=False):
     config_ = to_hparam_config(config)
-    if detmodel is None:
-        detmodel = efficientdet_keras.EfficientDetModel(config=config_)
+    detmodel = efficientdet_keras.EfficientDetModel(config=config_)
+    if with_backbone:
+        detmodel.backbone = FeatureModel(model)
     detmodel.build((config_.batch_size, *config_.image_size, 3))
     if pretrained is not None:
         if with_head:
@@ -158,7 +161,8 @@ def post_prep_infer_(config, model, pretrained=None, detmodel=None, with_head=Fa
     else:
         util_keras.restore_ckpt(
             detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'], skip_mismatch=True)
-    detmodel.backbone = FeatureModel(model)
+    if not with_backbone:
+        detmodel.backbone = FeatureModel(model)
     detmodel = setup_model_(config, detmodel)
     return detmodel
 
