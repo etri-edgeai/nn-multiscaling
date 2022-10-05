@@ -137,11 +137,6 @@ def transfer_learning_(model_path, config_path, lr=0.1):
             print(exc)
             sys.exit(1)
 
-    """
-    config["task"] = build_config(config["task"])
-    config["task"]["steps_per_execution"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
-    config["task"]["steps_per_epoch"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
-    """
     batch_size = config["task"]["batch_size"]
     model = tf.keras.models.load_model(model_path, custom_objects)
     model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0)
@@ -433,24 +428,7 @@ def run():
                 json.dump(running_time, file_)
 
         elif args.mode == "test": # Test
-            model = post_prep_(config["task"], model)
-
-            import tf2onnx
-            import onnxruntime as rt
-
-            def tf_convert_onnx(model):
-                input_shape = (None, 1024, 1024, 3)
-                spec = (tf.TensorSpec(input_shape, tf.float32, name="input"),)
-                output_path = "/tmp/tmp_%d.onnx" % os.getpid()
-                model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=output_path)
-                output_names = [n.name for n in model_proto.graph.output]
-                return output_path, output_names
-
-
-            util_keras.restore_ckpt(
-                model, "temp/emackpt-1", config["task"]["moving_average_decay"], skip_mismatch=False)
-            tf_convert_onnx(model)
-
+            model = post_prep_(config["task"], model, pretrained=args.pretrained, with_head=True, with_backbone=True)
             validate_(config["task"], model)
 
         elif args.mode == "finetune": # Test
