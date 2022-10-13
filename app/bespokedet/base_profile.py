@@ -1,3 +1,5 @@
+""" Base profiling """
+
 import os
 import json
 import shutil
@@ -16,7 +18,9 @@ np.random.seed(1234)
 from profile import measure
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 from taskhandler import *
 
 dir_ = "build_build_approx"
@@ -26,7 +30,8 @@ model_file = os.path.join(dir_, "base.h5")
 pretrained = "../partial/temp/emackpt-99"
 
 from keras_flops import get_flops
-model = tf.keras.models.load_model(model_file, custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
+model = tf.keras.models.load_model(
+    model_file, custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
 
 config = "configs/visdrone.yaml"
 with open(config, 'r') as stream:

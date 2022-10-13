@@ -1,3 +1,5 @@
+""" Profiler """
+
 import os
 import json
 import copy
@@ -5,8 +7,8 @@ import shutil
 import time
 from os import listdir
 from os.path import isfile, join
-from silence_tensorflow import silence_tensorflow
-silence_tensorflow()
+#from silence_tensorflow import silence_tensorflow
+#silence_tensorflow()
 
 
 from timeit import default_timer as timer
@@ -43,7 +45,9 @@ import onnxruntime as rt
 
 from bespoke.base.interface import ModelHouse
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 
 from taskhandler import *
 
@@ -58,6 +62,7 @@ BATCH_SIZE_ONNX_GPU = 1
 BATCH_SIZE_CPU = 1
 
 def tf_convert_onnx(model, input_shape=None):
+    """ tf -> onnx """
     if input_shape is None:
         input_shape = model.input.shape
 
@@ -68,6 +73,7 @@ def tf_convert_onnx(model, input_shape=None):
     return output_path, output_names
 
 def tf_convert_tflite(model):
+    """ tf -> tflite """
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.target_spec.supported_ops = [
@@ -78,6 +84,7 @@ def tf_convert_tflite(model):
     return model_
 
 def measure(model, mode="cpu", batch_size=-1, num_rounds=100, input_shape=None):
+    """ Measure """
     total_t = 0
     if input_shape is None:
         if type(model.input) == list:
@@ -119,7 +126,13 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100, input_shape=None):
         input_data = np.array(np.random.rand(*input_shape), dtype=np.float32)
         x_ortvalue = rt.OrtValue.ortvalue_from_numpy(input_data, DEVICE_NAME, DEVICE_INDEX)
         io_binding = m.io_binding()
-        io_binding.bind_input(name="input", device_type=x_ortvalue.device_name(), device_id=DEVICE_INDEX, element_type=input_data.dtype, shape=x_ortvalue.shape(), buffer_ptr=x_ortvalue.data_ptr())
+        io_binding.bind_input(
+            name="input",
+            device_type=x_ortvalue.device_name(),
+            device_id=DEVICE_INDEX,
+            element_type=input_data.dtype,
+            shape=x_ortvalue.shape(),
+            buffer_ptr=x_ortvalue.data_ptr())
         io_binding.bind_output(output_names[0])
         try:
             for i in range(10):
@@ -139,7 +152,8 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100, input_shape=None):
     elif mode == "gpu":
         # dummy run
         with tf.device("/gpu:0"):
-            input_data = tf.convert_to_tensor(np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
+            input_data = tf.convert_to_tensor(
+                np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
             for i in range(10):
                 model(input_data, training=False)
 
@@ -152,7 +166,8 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100, input_shape=None):
 
     elif mode == "cpu":
         with tf.device("/cpu:0"):
-            input_data = tf.convert_to_tensor(np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
+            input_data = tf.convert_to_tensor(
+                np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
             for i in range(num_rounds):
                 start = timer()
                 model(input_data, training=False)
@@ -191,6 +206,7 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100, input_shape=None):
 
 
 def validate(config, model, detmodel):
+    """ validation """
     backup = detmodel.backbone.model
     detmodel.backbone.model = model
     ret = validate_(config, detmodel)
@@ -198,6 +214,7 @@ def validate(config, model, detmodel):
     return ret
 
 def run():
+    """ Run function """
 
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
     parser.add_argument('--target_dir', type=str, default=None, help='model')
@@ -250,7 +267,7 @@ def run():
     base = {
         "gpu": measure(mh.model, mode="gpu"),
         "cpu": measure(mh.model, mode="cpu"),
-        "onnx_gpu": measure(mh.model, mode="onnx_gpu"),
+        #"onnx_gpu": measure(mh.model, mode="onnx_gpu"),
         "onnx_cpu": measure(mh.model, mode="onnx_cpu"),
     }
     data = {}
@@ -277,7 +294,11 @@ def run():
             if is_gated:
                 mh.get_node(val["origin"]).net.wakeup()
                 reference_model = mh.get_node(val["origin"]).net.model
-                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
+                parser = PruningNNParser(
+                    reference_model,
+                    allow_input_pruning=True,
+                    custom_objects=custom_objects,
+                    gate_class=SimplePruningGate)
                 parser.parse()
                 model_ = parser.cut(model)
                 print(model.count_params(), model_.count_params())
@@ -317,13 +338,13 @@ def run():
         if not notflite:
             try:
                 tflite = measure(model, mode="tflite")
-            except Exception as e:
+            except RuntimeError as e:
                 print(e)
                 tflite = 100000000000.0
 
         gpu = 0
         cpu = 0
-        onnx_gpu = measure(model, mode="onnx_gpu")
+        #onnx_gpu = measure(model, mode="onnx_gpu")
         onnx_cpu = measure(model, mode="onnx_cpu")
 
         profile["gpu"] = gpu
@@ -331,7 +352,7 @@ def run():
             profile["igpu"] = igpu
         profile["cpu"] = cpu
         profile["onnx_cpu"] = onnx_cpu
-        profile["onnx_gpu"] = onnx_gpu
+        #profile["onnx_gpu"] = onnx_gpu
 
         if not notflite:
             profile["tflite"] = tflite

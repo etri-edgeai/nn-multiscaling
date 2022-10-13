@@ -1,3 +1,5 @@
+""" Pruning Gate Layer for TensorFlow """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -9,6 +11,7 @@ from tensorflow.keras import backend as K
 from nncompress.assets.formula.gate import SimplePruningGateFormula
 
 class SimplePruningGate(layers.Layer, SimplePruningGateFormula):
+    """ Simple Pruning Gate Layer """
 
     def __init__(self,
                  ngates,
@@ -24,7 +27,7 @@ class SimplePruningGate(layers.Layer, SimplePruningGateFormula):
         def grad_tracker(x):
             def custom_grad(dy, variables):
                 if self.collecting:
-                    self.grad_holder.append(\
+                    self.grad_holder.append(
                         tf.reduce_sum(dy * x, axis=[1, 2]))
                 return self.compute(dy), [ tf.zeros(self.ngates,) ]
             return self.compute(x), custom_grad
@@ -38,6 +41,7 @@ class SimplePruningGate(layers.Layer, SimplePruningGateFormula):
         self.data_tracker = data_tracker
 
     def build(self, input_shape):
+        """ Build function """
         self.gates = self.add_weight(name='gates',
                                      shape=(self.ngates,),
                                      initializer="ones",
@@ -45,12 +49,15 @@ class SimplePruningGate(layers.Layer, SimplePruningGateFormula):
         super(SimplePruningGate, self).build(input_shape)
 
     def call(self, input):
+        """ Call function (grad tracking, data tracking, and applying gates) """
         return self.grad_tracker(self.data_tracker(input)), self.binary_selection()
 
     def compute_output_shape(self, input_shape):
+        """ Compute the output shape of this module """
         return (input_shape[0], self.ngates)
 
     def get_config(self):
+        """ Get config dict """
         config = super(SimplePruningGate, self).get_config()
         config.update({
             "ngates":self.ngates

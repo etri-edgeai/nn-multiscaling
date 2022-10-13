@@ -1,3 +1,5 @@
+""" Pruning Parser ver 1.0 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -15,23 +17,27 @@ from orderedset import OrderedSet
 
 from nncompress.backend.tensorflow_.transformation.handler import get_handler
 from nncompress.backend.tensorflow_.transformation.parser import NNParser, serialize
-from nncompress.backend.tensorflow_ import DifferentiableGate
+from nncompress.backend.tensorflow_ import SimplePruningGate
 
 class StopGradientLayer(tf.keras.layers.Layer):
+    """ Stop Gradient Layer """
     
     def __init__(self, name=None):
         super(StopGradientLayer, self).__init__(name=name)
 
     def call(self, inputs, training=None):
+        """ Overriden call """
         return tf.stop_gradient(inputs)
 
     def get_config(self):
+        """ Get configuration """
         return {
             "name":self.name,
         }
 
     @classmethod
     def from_config(cls, config):
+        """ Make an instance from a config """
         if "dtype" in config:
             config.pop("dtype")
         return cls(**config)
@@ -61,13 +67,15 @@ class PruningNNParser(NNParser):
     
     """
 
-    def __init__(self, model, basestr="", custom_objects=None, gate_class=None, namespace=None, allow_input_pruning=False):
-        super(PruningNNParser, self).__init__(model, basestr=basestr, custom_objects=custom_objects, namespace=namespace)
+    def __init__(
+        self, model, basestr="", custom_objects=None, gate_class=None, namespace=None, allow_input_pruning=False):
+        super(PruningNNParser, self).__init__(
+            model, basestr=basestr, custom_objects=custom_objects, namespace=namespace)
         self._sharing_groups = []
         self._avoid_pruning = set()
         self._t2g = None
         if gate_class is None:
-            self._gate_class = DifferentiableGate
+            self._gate_class = SimplePruningGate
         else:
             self._gate_class = gate_class
         self._allow_input_pruning = allow_input_pruning
@@ -78,6 +86,7 @@ class PruningNNParser(NNParser):
         self._custom_objects["StopGradientLayer"] = StopGradientLayer
 
     def parse(self):
+        """ Parse function """
         super(PruningNNParser, self).parse()
 
         def extract(i):
@@ -294,19 +303,26 @@ class PruningNNParser(NNParser):
                 continue
             for flow_idx, flow in enumerate(layers_dict[dst]["inbound_nodes"]):
                 for inbound in flow:
-                    if inbound[0] == src and level_change[0] == inbound[1] and level_change[1] == flow_idx and tensor_ == inbound[2]:
+                    if inbound[0] == src and\
+                        level_change[0] == inbound[1] and\
+                        level_change[1] == flow_idx and\
+                        tensor_ == inbound[2]:
+
                         inbound[0] = target[0]["config"]["name"]
                         inbound[1] = target[1]
                         inbound[2] = target[2]
 
     def get_first_activation(self, node_name):
+        """ Get the first activation layer from the node with `node_name` """
         
         act = []
         def act_mapping(n, level):
             node_data = self._graph.nodes(data=True)[n]
-            if node_data["layer_dict"]["class_name"] in ["Activation", "ReLU", "Softmax", "BatchNormalization"] and len(act) <= 1:
             #if node_data["layer_dict"]["class_name"] in ["Activation", "ReLU", "Softmax"] and len(act) == 0:
-                if node_data["layer_dict"]["class_name"] == "BatchNormalization" or (not node_data["layer_dict"]["config"]["activation"] == "sigmoid"):
+            if node_data["layer_dict"]["class_name"] in ["Activation", "ReLU", "Softmax", "BatchNormalization"] and\
+                len(act) <= 1:
+                if node_data["layer_dict"]["class_name"] == "BatchNormalization" or\
+                    (not node_data["layer_dict"]["config"]["activation"] == "sigmoid"):
                     act.append(node_data["layer_dict"]["config"]["name"])
         
         def stop(n, is_edge=False):
@@ -385,7 +401,8 @@ class PruningNNParser(NNParser):
                 for i in range(nflow):
                     gate_dict["inbound_nodes"].append([[target, i, 0, {}]])
                     gate_level = len(gate_dict["inbound_nodes"])-1
-                    self._reroute(at=(n["layer_dict"], i, 0), target=(gate_dict, gate_level, 0), layers_dict=layers_dict)
+                    self._reroute(
+                        at=(n["layer_dict"], i, 0), target=(gate_dict, gate_level, 0), layers_dict=layers_dict)
                     gate_mapping[(target, i)] = gate_dict, gate_level
 
         # Used in traversing
@@ -466,7 +483,8 @@ class PruningNNParser(NNParser):
             tensor = 1 if gate_dict["class_name"] == self._gate_class.__name__ else 0
             stop_gradient_dict["inbound_nodes"].append([[gate_dict["name"], gate_level, tensor, {}]])
             modifier_dict["inbound_nodes"].append([[n, level, 0, {}], [stop_gradient.name, 0, 0, {}]])
-            self._reroute(at=(node_data["layer_dict"], level, 0), target=(modifier_dict, 0, 0), layers_dict=layers_dict)
+            self._reroute(
+                at=(node_data["layer_dict"], level, 0), target=(modifier_dict, 0, 0), layers_dict=layers_dict)
 
         # create sub-layers to handle shift op.
         self.traverse(node_callbacks=[modify_output])
@@ -597,6 +615,7 @@ class PruningNNParser(NNParser):
         return ret
 
     def get_group_topology(self, layer_names=None):
+        """ Get group-level topology """
 
         def inspect(g, dict_, sum_=0):
             if type(g) == str:
@@ -649,6 +668,7 @@ class PruningNNParser(NNParser):
    
 
     def cut_by_masking(self, layer_names, masks):
+        """ Cut model by masking """
         gated_model, gm = p.inject(with_splits=True, with_mapping=True)
 
         for layer in gated_model.layers:
@@ -681,6 +701,7 @@ class PruningNNParser(NNParser):
 
 
 def has_intersection(i, j):
+    """ Find intersection resursively """
     if not type(i) in [list, tuple, OrderedSet, frozenset]:
         i  = (i,)
     if not type(j) in [list, tuple, OrderedSet, frozenset]:

@@ -1,3 +1,5 @@
+""" Transformation package """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -10,6 +12,8 @@ from tensorflow import keras
 from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
 
 def parse(model, parser_class, name=None, **kwargs):
+    """ Parse a model """
+
     parsers = {}
     if name is not None:
         parser = parser_class(model, basestr=name+"_", **kwargs)
@@ -30,6 +34,7 @@ def parse(model, parser_class, name=None, **kwargs):
     return parsers
 
 def inject(parsers, name=None, avoid=None, with_splits=False):
+    """ Inject gates """
 
     if name is None:
         parser = parsers["root"]
@@ -60,6 +65,7 @@ def inject(parsers, name=None, avoid=None, with_splits=False):
     return ret, igate_mapping
 
 def cut(parsers, gmodel, name=None):
+    """ Cut a model with gates """
 
     if name is None:
         parser = parsers["root"]
@@ -86,6 +92,9 @@ def cut(parsers, gmodel, name=None):
 
 
 def unfold(model, custom_objects=None):
+    """ Unfold function for a model containing other submodels defined by Functional.
+
+    """
 
     if type(model) == keras.Sequential:
         input_layer = keras.layers.Input(batch_shape=model.layers[0].input_shape, name="seq_input")

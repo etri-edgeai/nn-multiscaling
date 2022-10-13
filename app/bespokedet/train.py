@@ -1,8 +1,9 @@
+""" Train handler """
+
 import os
 import copy
 
 import horovod.tensorflow.keras as hvd
-from automl.efficientdet.tf2.train import setup_model
 import tensorflow as tf
 from automl.efficientdet.tf2 import train_lib
 

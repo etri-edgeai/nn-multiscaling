@@ -1,3 +1,5 @@
+""" Query and test """
+
 import os
 import json
 import shutil
@@ -6,11 +8,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 physical_devices = tf.config.list_physical_devices('GPU')
-try:
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
-    tf.config.experimental.set_memory_growth(physical_devices[1], True)
-except:
-    pass
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 first = os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]
 
@@ -30,19 +28,14 @@ args = parser.parse_args()
 
 from efficientnet.tfkeras import EfficientNetB0
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
-
-def tf_convert_tflite(model):
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [
-    tf.lite.OpsSet.TFLITE_BUILTINS,  # Enable TensorFlow Lite ops.
-    tf.lite.OpsSet.SELECT_TF_OPS  # Enable TensorFlow ops.
-    ]
-    model_= converter.convert()
-    return model_
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 
 def compute_time(model_path, metric):
+    """ Measure latency.
+
+    """
     model = tf.keras.models.load_model(model_path)
     print(model.count_params())
     if metric in ["gpu", "cpu", "tflite", "onnx_gpu", "onnx_cpu"]:
@@ -62,12 +55,19 @@ metric = args.metric
 alter_ratio = str(args.alter_ratio)
 dataset_config = args.config
 
-cmd = "PYTHONPATH='../..:./automl/efficientdet:$PYTHONPATH' CUDA_VISIBLE_DEVICES="+first+" python -u ../../run.py --config "+dataset_config+" --mode query_gated --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
+cmd = "PYTHONPATH='../..:./automl/efficientdet:$PYTHONPATH' CUDA_VISIBLE_DEVICES="+first\
+    +" python -u ../../run.py --config "+dataset_config+" --mode query_gated --source_dir "+ dir_ \
+    +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200\
+    --num_approx 200 --postfix "+args.postfix+" --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "\
+    + metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
 os.system(cmd)
 
 print(compute_time(model2, metric))
 
 print("finetune the following cmd!")
 teacher_path = dir_ +"/base.h5"
-cmd = "python -u ../../run.py --config "+dataset_config+" --mode finetune --model_path " + model1 + " --teacher_path " + teacher_path + " --sampling_ratio 1.0 --num_epochs 50 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value 187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
+cmd = "python -u ../../run.py --config "+dataset_config+" --mode finetune --model_path " + model1\
+    + " --teacher_path " + teacher_path + " --sampling_ratio 1.0 --num_epochs 50 --step_ratio 0.3 \
+    --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value \
+    187.74 --obj_ratio 0.3 --metric tflite --lda 0.01"
 print(cmd)

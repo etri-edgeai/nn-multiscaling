@@ -26,6 +26,7 @@ task:
   base_ckpt_path: "pretrained_weights/efficientdet-d0"
   model_dir: "temp"
   mixed_precision: false
+  map_freq: 1
   strategy: ""
   use_fake_data: false
   use_xla: false

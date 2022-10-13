@@ -1,3 +1,5 @@
+""" It provides an imagenet-based model with consideration of efficientdet. """
+
 import tensorflow as tf
 
 MODELS = [
@@ -51,6 +53,7 @@ endpoints = {
 }
 
 def get_model(model_name, config):
+    """ Return imagenet-based model """
     model_class = None
     for model_ in MODELS:
         if model_name in model_.__name__:

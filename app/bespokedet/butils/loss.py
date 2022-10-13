@@ -1,9 +1,14 @@
+""" BespokeLoss """
+
 import tensorflow as tf
 
 from tensorflow.keras import losses
 from tensorflow.keras import backend
 
 class BespokeTaskLoss(losses.Loss):
+    """BespokeTaskLoss for block-level transfer learning.
+
+    """
 
     def __init__(self, label_smoothing=0.1):
         super(BespokeTaskLoss, self).__init__()
@@ -11,6 +16,9 @@ class BespokeTaskLoss(losses.Loss):
         self.label_smoothing = label_smoothing
 
     def call(self, y_true, y_pred):
+        """ Call function imple.
+
+        """
         if self.mute:
             return 0.0
         else:

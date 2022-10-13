@@ -1,6 +1,13 @@
+""" Common interface for supporting multiple backends.
+
+"""
+
 from abc import ABC, abstractmethod
 
 class Parser(ABC):
+    """ Model Parser
+
+    """
 
     def __init__(self, model, namespace):
         self._model = model
@@ -14,18 +21,21 @@ class Parser(ABC):
 
     @abstractmethod
     def get_id(self, prefix):
-        """
+        """ Getting a new identifier.
 
         """
-
 
 class Net(ABC):
+    """ Model (Network) Wrapper
+
+    """
 
     def __init__(self, model):
         self._model = model
 
     @property
     def model(self):
+        """ Return model obj """
         return self._model
 
     @model.setter

@@ -1,12 +1,18 @@
+""" Prep. function for float-16 """
+
+
 import json
 
 import tensorflow as tf
 from tensorflow import keras
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 
 def change_dtype_(model_dict, policy, distill_set=None):
+    """ Change dtype of a model """
 
     float32 = set()
     print(model_dict["config"]["output_layers"])
@@ -34,6 +40,7 @@ def change_dtype_(model_dict, policy, distill_set=None):
 
 
 def change_dtype(model_, policy, distill_set=None, custom_objects=None):
+    """ Change dtype interface """
 
     if type(model_) == keras.Sequential:
         input_layer = keras.layers.Input(batch_shape=model_.layers[0].input_shape, name="seq_input")
@@ -54,6 +61,7 @@ def change_dtype(model_, policy, distill_set=None, custom_objects=None):
 
 
 def get_custom_objects():
+    """ Common custom objects """
     custom_objects = {
         "SimplePruningGate":SimplePruningGate,
         "StopGradientLayer":StopGradientLayer

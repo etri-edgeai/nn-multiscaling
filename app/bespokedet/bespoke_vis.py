@@ -1,3 +1,5 @@
+""" Bespoke Visualizer """
+
 import os
 import yaml
 import argparse
@@ -13,6 +15,7 @@ from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGra
 from taskhandler import *
 
 def run():
+    """ Run function """
 
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
     parser.add_argument('--config', type=str, required=True) # dataset-sensitive configuration
@@ -43,7 +46,9 @@ def run():
         if key in config["task"]:
             config_[key] = config["task"][key]
 
-    model = tf.keras.models.load_model(args.model_path, custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
+    model = tf.keras.models.load_model(
+        args.model_path,
+        custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
     detmodel =  post_prep_infer_(config["task"], model, pretrained=args.pretrained, with_head=True)
 
     driver = infer_lib.ServingDriver.create(

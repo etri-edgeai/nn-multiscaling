@@ -1,3 +1,7 @@
+""" Task-specific handling functions for object detection
+
+"""
+
 import copy
 import tqdm
 
@@ -12,12 +16,18 @@ import horovod.tensorflow.keras as hvd
 import dataloader
 
 class FeatureModel(tf.keras.Model):
+    """ A wrapper class for tf.keras.Model and EfficientDet series.
+
+    """
 
     def __init__(self, model):
         super(FeatureModel, self).__init__()
         self.model = model
 
     def call(self, inputs, training=False, features_only=False):
+        """ Call function
+
+        """
         ret = self.model(inputs, training)
         if features_only:
             return [ret[-1]] + ret[1:]
@@ -41,6 +51,9 @@ def build_config(partial_config):
 
 
 def dump_config(config):
+    """ Make a configuration object to dump.
+
+    """
     config = copy.deepcopy(config)
     config["image_size"] = config["image_size"][0]
     return config
@@ -100,6 +113,9 @@ def load_dataset_(config):
 
 
 def load_tl_dataset(config):
+    """ Load a dataset for transfer learning.
+
+    """
     dataset = load_dataset_(config)
     def inject_dummy(images, labels):
         dummy = tf.ones((images.shape[0],))
@@ -109,21 +125,33 @@ def load_tl_dataset(config):
     return train_dataset, val_dataset
 
 def extract_backbone(config, ckpt=None):
+    """ Backbone extraction
+
+    """
     config_ = to_hparam_config(config)
     detmodel = train_lib.EfficientDetNetTrain(config=config_)
     detmodel = setup_model_(config, detmodel)
     if ckpt is None:
         util_keras.restore_ckpt(
-            detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'])
+            detmodel,
+            config["base_ckpt_path"],
+            config_.moving_average_decay,
+            exclude_layers=['class_net', 'optimizer', 'box_net'])
     else:
         util_keras.restore_ckpt(
             detmodel, ckpt, config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'])
     return detmodel.backbone
 
 def replace_backbone(detmodel, new_backbone):
+    """ Replace a backbone.
+
+    """
     detmodel.backbone = new_backbone
  
 def post_prep_(config, model, pretrained=None, with_head=False, with_backbone=False):
+    """ Return an efficientdet-compatible model given a backbone model.
+
+    """
     config_ = to_hparam_config(config)
     detmodel = train_lib.EfficientDetNetTrain(config=config_)
     if with_backbone:
@@ -135,10 +163,17 @@ def post_prep_(config, model, pretrained=None, with_head=False, with_backbone=Fa
                 detmodel, pretrained, config_.moving_average_decay, exclude_layers=['optimizer'])
         else:
             util_keras.restore_ckpt(
-                detmodel, pretrained, config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'])
+                detmodel,
+                pretrained,
+                config_.moving_average_decay,
+                exclude_layers=['class_net', 'optimizer', 'box_net'])
     else:
         util_keras.restore_ckpt(
-            detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'], skip_mismatch=True)
+            detmodel,
+            config["base_ckpt_path"],
+            config_.moving_average_decay,
+            exclude_layers=['class_net', 'optimizer', 'box_net'],
+            skip_mismatch=True)
     if not with_backbone:
         detmodel.backbone = FeatureModel(model)
     detmodel = setup_model_(config, detmodel)
@@ -146,6 +181,10 @@ def post_prep_(config, model, pretrained=None, with_head=False, with_backbone=Fa
 
 
 def post_prep_infer_(config, model, pretrained=None, with_head=False, with_backbone=False):
+    """ Return an efficientdet-compatible model given a backbone model for inference.
+
+    """
+
     config_ = to_hparam_config(config)
     detmodel = efficientdet_keras.EfficientDetModel(config=config_)
     if with_backbone:
@@ -157,10 +196,17 @@ def post_prep_infer_(config, model, pretrained=None, with_head=False, with_backb
                 detmodel, pretrained, config_.moving_average_decay, exclude_layers=['optimizer'])
         else:
             util_keras.restore_ckpt(
-                detmodel, pretrained, config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'])
+                detmodel,
+                pretrained,
+                config_.moving_average_decay,
+                exclude_layers=['class_net', 'optimizer', 'box_net'])
     else:
         util_keras.restore_ckpt(
-            detmodel, config["base_ckpt_path"], config_.moving_average_decay, exclude_layers=['class_net', 'optimizer', 'box_net'], skip_mismatch=True)
+            detmodel,
+            config["base_ckpt_path"],
+            config_.moving_average_decay,
+            exclude_layers=['class_net', 'optimizer', 'box_net'],
+            skip_mismatch=True)
     if not with_backbone:
         detmodel.backbone = FeatureModel(model)
     detmodel = setup_model_(config, detmodel)
@@ -168,6 +214,9 @@ def post_prep_infer_(config, model, pretrained=None, with_head=False, with_backb
 
 
 def validate_(config, model):
+    """ Validation function for a given detection model
+
+    """
     train_dataset, valid_dataset = load_dataset_(config)
     coco_eval = train_lib.COCOCallback(valid_dataset, 1)
     coco_eval.set_model(model)
@@ -175,6 +224,9 @@ def validate_(config, model):
     return eval_results["AP"]
 
 def setup_model_(config, model):
+    """ Setup a detection model for training
+
+    """
     opt = setup_optimizer(config)
 
     setup_model(
@@ -196,6 +248,9 @@ def setup_model_(config, model):
     return model
     
 def train_(config, prefix, save_dir, callbacks, model, is_tl=False):
+    """ Training function.
+    
+    """
 
     if is_tl:
         train_dataset, val_dataset = load_tl_dataset(config)
@@ -240,6 +295,9 @@ def train_(config, prefix, save_dir, callbacks, model, is_tl=False):
 
 
 def backbone_transfer(config, model, teacher):
+    """ Transfer learning for backbone. experimental.
+
+    """
     opt = setup_optimizer(config)
     train_dataset, val_dataset = load_tl_dataset(config)
 

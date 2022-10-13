@@ -1,3 +1,7 @@
+""" Bespoke setup
+
+"""
+
 from setuptools import setup
 from setuptools import find_packages
 
@@ -20,6 +24,23 @@ setup(
     python_requires='>=3.6',
     packages=find_packages(),
     install_requires=[
-        "numpy"
+        "numpy",
+        "horovod",
+        "orderedset",
+        "numba",
+        "keras_flops",
+        "tqdm",
+        "neural_structured_learning",
+        "tensorflow_hub",
+        "Pillow",
+        "matplotlib",
+        "tensorflow_addons",
+        "silence_tensorflow",
+        "IPython",
+        "efficientnet",
+        "tf2onnx",
+        "onnxruntime",
+        "pycocotools",
+        "pydot"
     ]
 )

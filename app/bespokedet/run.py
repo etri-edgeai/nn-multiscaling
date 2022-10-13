@@ -47,7 +47,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 
 from bespoke.base.interface import ModelHouse
 from bespoke import config as bespoke_config
@@ -77,6 +79,7 @@ custom_objects = {
 }
 
 def student_model_save(model, dir_, inplace=False, prefix="", postfix=""):
+    """ Student model saving """
 
     if inplace:
         student_house_path = dir_
@@ -99,11 +102,13 @@ def student_model_save(model, dir_, inplace=False, prefix="", postfix=""):
     return filepath
 
 def prep(config, model):
+    """ Prepartion for training """
     # optimizer
     opt = Adam(lr=0.001)
     model.complie(opt, loss="categorical_crossentropy", run_eagerly=False)
 
 def transfer_learning_(model_path, config_path, lr=0.1): 
+    """ Transfer learning to execute """
     from butils import optimizer_factory
     #silence_tensorflow()
     num_gpus = len(tf.config.list_physical_devices('GPU'))
@@ -148,6 +153,7 @@ def transfer_learning_(model_path, config_path, lr=0.1):
 
 
 def transfer_learning(mh, config_path, target_dir=None, filter_=None, num_submodels_per_bunch=25):
+    """ Transfer learning entry point """
 
     for n in mh.nodes:
         if not n.net.is_sleeping():
@@ -182,7 +188,7 @@ def transfer_learning(mh, config_path, target_dir=None, filter_=None, num_submod
                     targets.append(trainable_nodes[i])
                     targets[-1].wakeup()
 
-            except Exception as e:
+            except tf.errors.ResourceExhaustedError as e:
                 print("Memory Problem Occurs %d" % cnt)
                 gc.collect()
                 for t in targets:
@@ -198,13 +204,18 @@ def transfer_learning(mh, config_path, target_dir=None, filter_=None, num_submod
                 dirpath = "test"
                 B.save_transfering_model(dirpath, house, output_idx, output_map)
 
-                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), config_path), np=len(tf.config.list_physical_devices('GPU'))-1, use_mpi=True)
+                horovod.run(
+                    transfer_learning_,
+                    (os.path.join(dirpath, 'model.h5'), config_path),
+                    np=len(tf.config.list_physical_devices('GPU'))-1,
+                    use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
                     raise Exception("err")
                 else:
                     # load and transfer model.
-                    trmodel = tf.keras.models.load_model(os.path.join(dirpath, f"finetuned_studentignore.h5"), custom_objects=custom_objects)
+                    trmodel = tf.keras.models.load_model(
+                        os.path.join(dirpath, f"finetuned_studentignore.h5"), custom_objects=custom_objects)
                     for layer in house.layers:
                         if len(layer.get_weights()) > 0:
                             layer.set_weights(trmodel.get_layer(layer.name).get_weights())
@@ -212,7 +223,7 @@ def transfer_learning(mh, config_path, target_dir=None, filter_=None, num_submod
                 del house, output_idx, output_map
                 gc.collect()
 
-            except Exception as e:
+            except tf.errors.ResourceExhaustedError as e:
                 print(e)
                 traceback.print_exc()
                 print("Memory Problem Occurs %d" % cnt)
@@ -236,9 +247,8 @@ def transfer_learning(mh, config_path, target_dir=None, filter_=None, num_submod
     for n in to_remove:
         mh.remove(n)
 
-
-
 def run():
+    """ Running """
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
     parser.add_argument('--config', type=str, required=True) # dataset-sensitive configuration
     parser.add_argument('--mode', type=str, default="test", help='model')
@@ -410,18 +420,6 @@ def run():
             )
             tl_time_t2 = time.time()
             running_time["transfer_learning_time"].append(tl_time_t2 - tl_time_t1)
-            if args.mode == "approx":
-                profile_time_t1 = time.time()
-                train_data_generator, _ = load_dataset_(config["task"])
-                sample_inputs = []
-                for x,y in train_data_generator:
-                    sample_inputs.append(x)
-                    if len(sample_inputs) > config["num_samples_for_profiling"]:
-                        break
-                mh.build_sample_data(sample_inputs)
-                mh.profile()
-                profile_time_t2 = time.time()
-                running_time["profile_time"].append(profile_time_t2 - profile_time_t1)
 
             mh.save(args.target_dir)
             with open(os.path.join(args.target_dir, "running_time.log"), "w") as file_:
@@ -479,7 +477,8 @@ def run():
                     for loc in locs[1]:
                         distil_loc.append((loc[0], loc[1]))
 
-                model_ = B.make_distiller(model, teacher, distil_loc, scale=config["dloss_scale"], model_builder=model_builder)
+                model_ = B.make_distiller(
+                    model, teacher, distil_loc, scale=config["dloss_scale"])
                 distillation = True
 
             elif args.trmode:
@@ -490,7 +489,7 @@ def run():
                 with open(os.path.join(temp_path, "output_map.pickle"), "rb") as f:
                     output_map = pickle.load(f)
 
-                model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0, model_builder=model_builder)
+                model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0)
                 distillation = True
 
             else:
@@ -502,7 +501,8 @@ def run():
             train_(config["task"], "finetuned_"+basename, dirname, None, model_)
 
             if hvd.rank() == 0:
-                filepath = student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
+                filepath = student_model_save(
+                    model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
                 finetune_time_t2 = time.time()
                 running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
                 running_time_dump(filepath, running_time)
@@ -522,7 +522,7 @@ def run():
                         raise ValueError("fintuned_gated or gated does not exist")
                 model = tf.keras.models.load_model(model_path, custom_objects)
                 dirname = os.path.join(args.source_dir, "students")
-                reference_model = tf.keras.models.load_model(\
+                reference_model = tf.keras.models.load_model(
                     os.path.join(args.source_dir, "students", "nongated_student"+args.postfix+".h5")
                 )
             else:
@@ -549,16 +549,6 @@ def run():
             mh.profile()
             mh.save(args.target_dir)
 
-        elif args.mode == "query":
-            query_time_t1 = time.time()
-            for n in mh.nodes:
-                n.sleep() # to_cpu 
-            ret = mh.select()
-            filepath = student_model_save(ret, args.source_dir)
-            query_time_t2 = time.time()
-            running_time["query_time"].append(query_time_t2 - query_time_t1)
-            running_time_dump(filepath, running_time)
-
         elif args.mode == "query_gated":
             query_time_t1 = time.time()
             for n in mh.nodes:
@@ -568,9 +558,14 @@ def run():
             assert base_value > 0
             obj_value = args.obj_ratio
             metric = args.metric
-            gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
+            gated, non_gated, ex_maps = mh.select(
+                (metric, base_value * obj_value, base_value),
+                return_gated_model=True,
+                lda=args.lda,
+                ratio=args.alter_ratio)
             student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
-            filepath = student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
+            filepath = student_model_save(
+                non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
             student_dir = os.path.dirname(filepath)
             basename = os.path.splitext(os.path.basename(filepath))[0]
             with open(os.path.join(student_dir, "%s.map" % basename), "w") as file_:

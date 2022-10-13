@@ -1,3 +1,5 @@
+""" Parser ver 1.0 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -16,6 +18,7 @@ from orderedset import OrderedSet
 from nncompress.backend.tensorflow_.transformation.handler import get_handler
 
 def serialize(layer):
+    """ Layer serialization """
     layer_dict = tf.keras.layers.serialize(layer)
     layer_dict["name"] = layer.name
     layer_dict["inbound_nodes"] = []
@@ -70,16 +73,19 @@ class NNParser(object):
             self._namespace = namespace
 
     def copy_model(self):
+        """ Model deep copy """
         model = tf.keras.models.clone_model(self._model)
         model.set_weights(self._model.get_weights())
         return model
 
     @property
     def model(self):
+        """ Return the model """
         return self._model
 
     @property
     def custom_objects(self):
+        """ Return the registered custom objects """
         return self._custom_objects
 
     def get_id(self, prefix):
@@ -120,6 +126,7 @@ class NNParser(object):
         return [(id_, self._graph.nodes[id_]) for id_ in ids]
 
     def get_layer_dict(self, name):
+        """ Get the dictionary of a layer """
         for layer_dict in self._model_dict["config"]["layers"]:
             if layer_dict["config"]["name"] == name:
                 return copy.deepcopy(layer_dict)
@@ -184,7 +191,8 @@ class NNParser(object):
                 Similarly, the second one is a mapping from the layers to have external outputs in the target block
                 to those in the replacement block.
                 Note that the first element has a form of (target_layer_name, replacement_layer_name),
-                while the second element has a form of (target_layer_name, replacement_layer_name, target_tensor, replacement_tensor).
+                while the second element has a form of (target_layer_name, replacement_layer_name, target_tensor,
+                replacement_tensor).
                 `target_tensor` is the tensor index of the target used in an inbound node list.
                 `replacemenet_tensor` is similarly defined.
             custom_objects: `custom objects for loading a Keras model having custom layers/operators.
@@ -251,7 +259,8 @@ class NNParser(object):
                 if in_map == "seq":
                     offsets = { r["name"]:1 for r in replacement }
                     for r_idx, r in enumerate(replacement[1:]):
-                        r["inbound_nodes"].append([[replacement[r_idx]["name"], len(replacement[r_idx]["inbound_nodes"])-1, 0, {}]])
+                        r["inbound_nodes"].append(
+                            [[replacement[r_idx]["name"], len(replacement[r_idx]["inbound_nodes"])-1, 0, {}]])
                 else:
                     # The first layer does not have any inbound.
                     if flow_idx == 0: # backup flow info.
@@ -277,7 +286,12 @@ class NNParser(object):
                         src, dst, level_change, tensor = e[0], e[1], e[2]["level_change"], e[2]["tensor"]
                         for flow_ in layers_dict[dst]["inbound_nodes"]:
                             for inbound in flow_:
-                                if inbound[0] == src and inbound[1] == level_change[0] and inbound[1] == t_flow_idx and inbound[2] == tensor and inbound[2] == t_tensor:
+                                if inbound[0] == src and\
+                                    inbound[1] == level_change[0] and\
+                                    inbound[1] == t_flow_idx and\
+                                    inbound[2] == tensor and\
+                                    inbound[2] == t_tensor:
+
                                     inbound[0] = r
                                     inbound[1] = r_flow_idx
                                     inbound[2] = r_tensor
@@ -305,6 +319,7 @@ class NNParser(object):
         return model_dict
 
     def get_randomwalk(self, start, p=0.25, types=None, min_step=-1):
+        """ Conduct random walk on the model's topology """
 
         trail = []
         def callback_(n, level):
@@ -332,6 +347,7 @@ class NNParser(object):
 
 
     def get_joints(self, filter_=None, start=None, min_step=-1):
+        """ Get joint layers """
 
         if len(self.torder) != self._graph.number_of_nodes():
             return
@@ -370,6 +386,7 @@ class NNParser(object):
         return joints
 
     def first_common_descendant(self, names, joints, is_transforming=True):
+        """ The first commom descendant """
 
         joints = set(joints)
         sources = [ x for x in self._graph.nodes(data=True) if x[1]["layer_dict"]["config"]["name"] in names]
@@ -403,7 +420,8 @@ class NNParser(object):
             match = True
             target = visits[0][-1][0]
             if is_transforming:
-                if not get_handler(self._graph.nodes(data=True)[target]["layer_dict"]["class_name"]).is_transformer(0):
+                if not get_handler(
+                    self._graph.nodes(data=True)[target]["layer_dict"]["class_name"]).is_transformer(0):
                     visits[0].pop()
                     continue
 
@@ -432,8 +450,8 @@ class NNParser(object):
         """A general traversal algorithm for NNs.
 
         if `sync` is True, it traverses a neural network graph in similar order of NN execution.
-        The similar order formally means that the traversing algorithm is designed to push a node n into the traversing stack,
-        only if all the inbound neighbors of n are already popped from the stack.
+        The similar order formally means that the traversing algorithm is designed to push a node n into the
+        traversing stack, only if all the inbound neighbors of n are already popped from the stack.
 
         For example, a node (layer) v is supposed to be concatenation.
         There can be multiple inbounding nodes to v.
@@ -443,9 +461,11 @@ class NNParser(object):
         # Arguments.
             sources: a list of staring nodes.
             inbound: bool, the flag for indicating search direction.
-            node_callbacks: a list, it is a list of functions (name, level) called with the name of a popped node and its traversing level.
+            node_callbacks: a list, it is a list of functions (name, level) called with the name of a popped node and
+            its traversing level.
             neighbor_callbacks: a list, it is a list of functions called with edge `e`.
-            sync: bool, if it is True, the traversal is done in similar oder of NN execution. Otherwise, it is a normal DFS.
+            sync: bool, if it is True, the traversal is done in similar oder of NN execution. Otherwise, it is a
+            normal DFS.
             stopping_condition: a function(e), it lets us know whether we need to expand the traversal over edge e.
 
         """
@@ -537,13 +557,19 @@ class NNParser(object):
                     src = inbound[0]
                     dst = layer["config"]["name"]
                     self._graph.add_edge(
-                        src, dst, level_change=(inbound[1], flow_idx), tensor=inbound[2], inbound_idx=0, temp=inbound[-1])
+                        src, dst, level_change=(
+                            inbound[1], flow_idx), tensor=inbound[2], inbound_idx=0, temp=inbound[-1])
                 else:
                     for in_idx, inbound in enumerate(flow):
                         src = inbound[0]
                         dst = layer["config"]["name"]
                         self._graph.add_edge(
-                            src, dst, level_change=(inbound[1], flow_idx), tensor=inbound[2], inbound_idx=in_idx, temp=None)
+                            src,
+                            dst,
+                            level_change=(inbound[1], flow_idx),
+                            tensor=inbound[2],
+                            inbound_idx=in_idx,
+                            temp=None)
 
         v = self.traverse()
         self.torder = {
@@ -562,6 +588,7 @@ class NNParser(object):
 
 
     def get_leaves(self, block):
+        """ Return leaf nodes """
         block_set = set([l.name for l in block])
         input_leaves = []
         output_leaves = []
@@ -588,7 +615,9 @@ class NNParser(object):
 
         return input_leaves, output_leaves
 
-    def get_subnet(self, block, model, in_target_shapes=None, out_target_shapes=None, use_adapter=False, custom_objects=None):
+    def get_subnet(
+        self, block, model, in_target_shapes=None, out_target_shapes=None, use_adapter=False, custom_objects=None):
+        """ Extract subnetwork """
         # block: list of names
         block_set = set([l.name for l in block])
         inputs, outputs = self.get_leaves(block)
@@ -605,8 +634,10 @@ class NNParser(object):
                 return True
             return False
 
-        sources_for_check = [ x for x in self._graph.nodes(data=True) if x[1]["layer_dict"]["config"]["name"] in outputs ]
-        v = self.traverse(sources=sources_for_check, node_callbacks=[check], stopping_condition=stop_check, inbound=True)
+        sources_for_check = [ x for x in self._graph.nodes(data=True)
+            if x[1]["layer_dict"]["config"]["name"] in outputs ]
+        v = self.traverse(
+            sources=sources_for_check, node_callbacks=[check], stopping_condition=stop_check, inbound=True)
         for v_ in v:
             if v_[0] not in block_set:
                 block_set.add(v_[0])
@@ -665,7 +696,8 @@ class NNParser(object):
             else: 
                 inputs_ = []
                 for e in self._graph.in_edges(n, data=True):
-                    src, dst, level_change, inbound_idx, tidx = e[0], e[1], e[2]["level_change"], e[2]["inbound_idx"], e[2]["tensor"]
+                    src, dst, level_change, inbound_idx, tidx =\
+                        e[0], e[1], e[2]["level_change"], e[2]["inbound_idx"], e[2]["tensor"]
                     if level_change[1] == level:
                         ot = out_tensors[(src, level_change[0])]
                         if type(ot) == tuple:
@@ -707,7 +739,8 @@ class NNParser(object):
                     out_adapters[out] = tf.keras.layers.Conv2D(out_shape[-1], 1, name=out+"_b_out_adapt")
 
         outputs_ = [
-            out_adapters[out](out_tensors[(out, 0)]) if out_adapters[out] is not None else out_tensors[(out, 0)] for out in outputs
+            out_adapters[out](out_tensors[(out, 0)])
+                if out_adapters[out] is not None else out_tensors[(out, 0)] for out in outputs
         ]
         inputs_ = [
             in_tensors[in_] for in_ in inputs

@@ -1,3 +1,5 @@
+""" TensorFlow Backend Functions for Bespoke """
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -14,9 +16,13 @@ import tensorflow as tf
 import numpy as np
 from keras_flops import get_flops
 
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser
+from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
+from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation import parse, inject, cut, unfold
+from nncompress.backend.tensorflow_.transformation import parse
+from nncompress.backend.tensorflow_.transformation import inject
+from nncompress.backend.tensorflow_.transformation import unfold
 from nncompress.backend import add_prefix
 from tqdm import tqdm
 
@@ -35,10 +41,12 @@ STOP_POINTS = [
 ]
 
 def preprocess(model, namespace, custom_objects):
+    """ Clean up Keras model """
     model = unfold(model, custom_objects)
     return model, TFParser(model, namespace, custom_objects)
 
 def equivalent(a, b):
+    """ Equivalence test with a and b """
 
     if a.__class__.__name__ == "Activation":
         a = a.activation
@@ -64,10 +72,12 @@ def equivalent(a, b):
         return False
 
 class TFParser(common.Parser):
+    """ Parser for TensorFlow Model """
 
     def __init__(self, model, namespace, custom_objects=None):
         super(TFParser, self).__init__(model, namespace)
-        self._parser = PruningNNParser(model, custom_objects=custom_objects, namespace=namespace, gate_class=SimplePruningGate)
+        self._parser = PruningNNParser(
+            model, custom_objects=custom_objects, namespace=namespace, gate_class=SimplePruningGate)
         self._parser.parse()
 
         self._joints = None
@@ -78,12 +88,15 @@ class TFParser(common.Parser):
         self.build()
 
     def get_id(self, prefix):
+        """ Make a new identifier with `prefix`. """
         return self._parser.get_id(prefix)
 
     def get_model_name(self):
+        """ Return the model name """
         return self._parser.model.name
 
     def is_compatible(self, a, b):
+        """ Check wehther a and b are compatible or not. """
         pos_a = a.pos
         pos_b = b.pos
 
@@ -99,9 +112,11 @@ class TFParser(common.Parser):
         return False
 
     def extract(self, origin_nodes, maximal, return_gated_model=False):
+        """ Extract a model defiend by maximal. """
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def build(self):
+        """ Build Parser """
         # construct t-rank
         v = self._parser.traverse()
         trank = {
@@ -114,7 +129,6 @@ class TFParser(common.Parser):
         }
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
-            #return len(node_dict["layer_dict"]["inbound_nodes"]) > 0 and len(node_dict["layer_dict"]["inbound_nodes"][0]) == 1
         joints = self._parser.get_joints(filter_=f)
 
         self._joints = joints
@@ -122,6 +136,7 @@ class TFParser(common.Parser):
         self._rtrank = rtrank
 
 class TFNet(common.Net):
+    """ Handler for TensorFlow Network (Model) """
 
     def __init__(self, model, custom_objects=None):
         super(TFNet, self).__init__(model)
@@ -135,6 +150,7 @@ class TFNet(common.Net):
 
     @property
     def input_shapes(self):
+        """ Input Shapes """
         if self.is_sleeping():
             self.wakeup()
         if type(self._model.input) == list:
@@ -144,6 +160,7 @@ class TFNet(common.Net):
 
     @property
     def output_shapes(self):
+        """ Output Shapes """
         if self.is_sleeping():
             self.wakeup()
         if type(self._model.output) == list:
@@ -152,11 +169,13 @@ class TFNet(common.Net):
             return [self._model.output.shape]
 
     def predict(self, data):
+        """ Predict with the model """
         if self.is_sleeping():
             self.wakeup()
         return self._model(data)
 
     def save(self, name, save_dir):
+        """ save to a storage """
         if self.is_sleeping():
             self.wakeup()
         filepath = os.path.join(save_dir, name+".h5")
@@ -166,6 +185,7 @@ class TFNet(common.Net):
         return filepath
 
     def profile(self, sample_inputs, sample_outputs, cmodel=None):
+        """ Base profiling """
         if self.is_sleeping():
             self.wakeup()
         if cmodel is not None:
@@ -181,12 +201,14 @@ class TFNet(common.Net):
         self.sleep()
 
     def get_flops(self):
+        """ Get FLOPs """
         if self.is_sleeping():
             self.wakeup()
         flops = get_flops(self._model, batch_size=1)
         return flops
 
     def get_mse(self, sample_inputs, sample_outputs):
+        """ Get MSE """
         if self.is_sleeping():
             self.wakeup()
         ret = 0
@@ -198,6 +220,7 @@ class TFNet(common.Net):
         return ret
 
     def get_cmodel(self, origin_model):
+        """ Get a compressed model """
         if self.is_sleeping():
             self.wakeup()
         flag = False
@@ -210,16 +233,19 @@ class TFNet(common.Net):
         if not flag:
             return self.model
 
-        parser = PruningNNParser(origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
+        parser = PruningNNParser(
+            origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
         parser.parse()
         cmodel = parser.cut(self._model)
         self.sleep()
         return cmodel
 
     def is_sleeping(self):
+        """ Is sleeping? """
         return type(self._model) == tuple
 
     def sleep(self):
+        """ Do sleep """
         json_ = self._model.to_json()
         weights = self._model.get_weights()
         model = self._model
@@ -227,6 +253,7 @@ class TFNet(common.Net):
         del model
 
     def wakeup(self):
+        """ Stroage to GPU mem """
         if type(self._model) != tuple:
             return
         model = tf.keras.models.model_from_json(self._model[0], custom_objects=self._custom_objects)
@@ -239,6 +266,7 @@ class TFNet(common.Net):
 
     @classmethod
     def load(self, filepath, custom_objects=None):
+        """ Load a model from file """
         model = load_model(filepath, custom_objects=custom_objects)
         for layer in model.layers:
             if layer.__class__ == SimplePruningGate:
@@ -248,10 +276,12 @@ class TFNet(common.Net):
 
 
 def get_parser(model, namespace, custom_objects):
+    """ Make a parser for a model """
     return TFParser(model, namespace, custom_objects)
 
 
 def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
+    """ Extract imple. """
 
     groups = parser.get_sharing_groups()
     r_groups = {}
@@ -270,8 +300,11 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         if n.origin is None:
             continue
         n.origin.net.wakeup()
-        cparser[n.id_] = PruningNNParser(\
-                n.origin.net.model, allow_input_pruning=True, custom_objects=n.origin.net._custom_objects, gate_class=SimplePruningGate)
+        cparser[n.id_] = PruningNNParser(
+                n.origin.net.model,
+                allow_input_pruning=True,
+                custom_objects=n.origin.net._custom_objects,
+                gate_class=SimplePruningGate)
         cparser[n.id_].parse()
         input_, output_ = n.pos
         
@@ -423,14 +456,15 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
     model_json = json.dumps(model_dict)
     try:
         model = tf.keras.models.model_from_json(model_json, custom_objects=parser.custom_objects)
-    except Exception as e:
+    except ValueError as e:
         for ex_map, (target, replacement), pos in zip(ex_maps, replacing_mappings, pos_backup):
             print(ex_map)
             print(target)
             print(replacement)
             print(pos)
             print("---")
-        import sys, traceback
+        import sys
+        import traceback
         traceback.print_exc(file=sys.stdout)
         with open("debug.json", "w") as f:
             json.dump(model_dict, f)
@@ -531,6 +565,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             return ret
             
 def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
+    """ Make train model imple. """
     outputs = []
     outputs.extend(model.outputs)
     output_map = []
@@ -596,21 +631,26 @@ def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
 
 
 def backend_net():
+    """ Backned net """
     return TFNet
 
 
 def get_basemodel_path(dir_):
+    """ Get basemodel path """
     return os.path.join(dir_, "base.h5")
     
 def save_model(name, model, save_dir):
+    """ Save model """
     path = os.path.join(save_dir, name+".h5")
     tf.keras.models.save_model(model, path, overwrite=True)
 
 def load_model_from_node(load_dir, id_, custom_objects=None):
+    """ Load model from node """
     path = os.path.join(load_dir, id_+".h5")
-    load_model(path, custom_objects)
+    return load_model(path, custom_objects)
 
 def load_model(filepath, custom_objects=None):
+    """ Load model """
     try:
         return tf.keras.models.load_model(filepath, custom_objects=custom_objects)
     except ValueError:
@@ -627,6 +667,7 @@ def load_model(filepath, custom_objects=None):
         return model
 
 def get_type(model, layer_name=None):
+    """ Get the type of a layer """
     if layer_name is None:
         return None
     if model.get_layer(layer_name).__class__ == tf.keras.layers.Activation:
@@ -636,6 +677,7 @@ def get_type(model, layer_name=None):
     return type_ 
 
 def numpyfy(data):
+    """ data -> numpy array """
 
     if type(data) == list:
         ret = []
@@ -646,6 +688,7 @@ def numpyfy(data):
         return data.numpy()
 
 def build_samples(model, data_gen, pos):
+    """ Build samples with data_gen """
     outputs = [[],[]]
     for idx, p in enumerate(pos):
         for pp in p:
@@ -660,11 +703,13 @@ def build_samples(model, data_gen, pos):
     return results
 
 def cut(model, reference_model, custom_objects):
+    """ Cut a model from a reference model """
     parser = PruningNNParser(reference_model, custom_objects=custom_objects, gate_class=SimplePruningGate)
     parser.parse()
     return parser.cut(model)
 
 def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
+    """ Make a model to train with distillation """
 
     toutputs = []
     for loc in distil_loc:
@@ -699,6 +744,7 @@ def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
     return new_model
 
 def save_transfering_model(dirpath, house, output_idx, output_map):
+    """ Save transferring function for TL """
     model_path = os.path.join(dirpath, "model.h5")
     output_idx_path = os.path.join(dirpath, "output_idx.pickle")
     output_map_path = os.path.join(dirpath, "output_map.pickle")
@@ -717,6 +763,7 @@ def save_transfering_model(dirpath, house, output_idx, output_map):
     return
 
 def make_transfer_model(model, output_idx, output_map, scale, model_builder=None):
+    """ Make a transferring model """
 
     if model_builder is not None:
         model = model_builder(model.input, model.output)

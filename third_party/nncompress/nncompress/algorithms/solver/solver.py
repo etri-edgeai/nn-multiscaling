@@ -1,9 +1,15 @@
+"""Solving an optimization.
+
+"""
+
+
 from __future__ import absolute_import
 from __future__ import print_function
 
 from abc import ABC, abstractmethod
 
 class State(ABC):
+    """ Solution state for meta-heuristic optimization """
 
     def get_next(self):
         """Find neighbors from the current state
@@ -24,6 +30,7 @@ class State(ABC):
         return "BaseState"
 
 class Solver(ABC):
+    """ Abstraction for a solver """
 
     def __init__(self, score_func):
         self._score_func = score_func

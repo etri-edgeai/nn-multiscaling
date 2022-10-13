@@ -1,3 +1,5 @@
+""" Interface for Bespoke """
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -16,6 +18,7 @@ from nncompress.algorithms.solver.solver import State
 from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingSolver
 
 class ModelState(State):
+    """ Solution State for Solving """
 
     def __init__(self, selected_nodes, nodes, parser, metric):
         self.selected_nodes = selected_nodes
@@ -24,6 +27,7 @@ class ModelState(State):
         self.metric = metric
             
     def get_next_impl(self):
+        """ Implementation for getting next solutions. """
         c = copy.copy(self.selected_nodes)
         while len(c) > 0:
             random.shuffle(c)
@@ -63,6 +67,7 @@ class ModelState(State):
 
 
 def score_f(obj_value, base_value, metric, lda, nodes):
+    """ Score function """
     approx_value = base_value
     score = None
     sum_mse = 0
@@ -108,12 +113,14 @@ class ModelHouse(object):
         self._sample_outputs = None
 
     def get_node(self, id_):
+        """ Get the node identified by `id_` """
         for n in self._nodes:
             if n.id_ == id_:
                 return n
         return None
 
     def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+        """ Find a compressed model with the spec. """
         minimal = []
         nodes = [n for n in self._nodes]
         import random
@@ -154,9 +161,12 @@ class ModelHouse(object):
                         score = max(approx_value / obj_value, 1.0)
                     else:
                         if metric != "igpu":
-                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max(
+                                (approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0)\
+                                + (on._profile["iacc"] - n._profile["iacc"]) * lda
                         else:
-                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0)\
+                                + (on._profile["iacc"] - n._profile["iacc"]) * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score
@@ -190,6 +200,7 @@ class ModelHouse(object):
 
     @property
     def origin_nodes(self):
+        """ Original nodes """
         ret = {}
         for n in self._nodes:
             if n.is_original():
@@ -198,18 +209,22 @@ class ModelHouse(object):
 
     @property
     def model(self):
+        """ Return the base model. """
         return self._model
 
     @property
     def parser(self):
+        """ Return TFParser """
         return self._parser
 
     @property
     def nodes(self):
+        """ Return the list of nodes """
         return self._nodes
 
     @property
     def trainable_nodes(self):
+        """ Return trainable nodes (subnets) """
         nodes = []
         for n in self._nodes:
             if not n.is_original():
@@ -217,9 +232,11 @@ class ModelHouse(object):
         return nodes
 
     def extend(self, nodes):
+        """ Extend the node list """
         self._nodes += nodes
 
     def build_sample_data(self, data):
+        """ Build sample data for nodes """
         self._sample_inputs = {}
         self._sample_outputs = {}
         for n in self._nodes:
@@ -230,9 +247,11 @@ class ModelHouse(object):
                 self._sample_outputs[n.pos[1]] = [ret_[1] for ret_ in ret]
 
     def make_train_model(self, nodes, scale=0.1):
+        """ Make a train version of a model with nodes """
         return B.make_train_model(self._model, nodes, scale=scale)
 
     def profile(self):
+        """ Base Profiling """
         if self._sample_inputs is None:
             raise ValueError("build_sample_data should've been called before profiling.")
 
@@ -240,6 +259,7 @@ class ModelHouse(object):
             n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
 
     def _get_predefined_paths(self, dir_):
+        """ Some predefined paths for Bespoke """
         subnet_dir_path = os.path.join(dir_, "nets")
         nodes_path = os.path.join(dir_, "nodes.json")
         namespace_path = os.path.join(dir_, "namespace.pkl")
@@ -249,6 +269,7 @@ class ModelHouse(object):
             namespace_path
 
     def save(self, save_dir):
+        """ Dump the model house """
        
         if os.path.exists(save_dir):
             print("%s exists." % save_dir)
@@ -279,6 +300,7 @@ class ModelHouse(object):
             pickle.dump(self._namespace, f)
 
     def load(self, load_dir):
+        """ Load the model house in `load_dir` """
         subnet_dir, nodes_path, namespace_path = self._get_predefined_paths(load_dir)
         with open(nodes_path, "r") as f:
             serialized = json.load(f)
@@ -303,7 +325,9 @@ class ModelHouse(object):
         print("load!")
 
     def add(self, node):
+        """ Add function to the node list """
         self._nodes.append(node)
 
     def remove(self, node):
+        """ Remove function a node from the list """
         self._nodes.remove(node)
