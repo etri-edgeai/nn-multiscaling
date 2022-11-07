@@ -22,12 +22,13 @@ from nncompress.backend.tensorflow_.transformation.pruning_parser import Pruning
 from nncompress.backend.tensorflow_.transformation.pruning_parser import StopGradientLayer
 from nncompress.backend.tensorflow_.transformation.pruning_parser import has_intersection
 from taskhandler import *
+from prep import *
 
-dir_ = "build_build_approx"
+dir_ = "../search/build_build_approx"
 #model_file = os.path.join(dir_, "students/nongated_studentgood.h5")
 model_file = os.path.join(dir_, "base.h5")
-#pretrained = "temp/emackpt-46"
-pretrained = "../partial/temp/emackpt-99"
+pretrained = "../../experiments/partial/temp/emackpt-99"
+#pretrained = "pretrained_weights/efficientdet-d0"
 
 from keras_flops import get_flops
 model = tf.keras.models.load_model(
@@ -45,7 +46,11 @@ config["task"] = build_config(config["task"])
 config["task"]["steps_per_execution"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
 config["task"]["steps_per_epoch"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
 
-model = post_prep_(config["task"], model, pretrained=pretrained, with_head=True)
+model = post_prep_(config["task"], model, pretrained=pretrained, with_head=True, with_backbone=True)
+
+policy = tf.keras.mixed_precision.Policy("float32")
+tf.keras.mixed_precision.set_global_policy(policy)
+model.backbone.model = change_dtype(model.backbone.model, policy)
 
 #print(model.summary())
 #from efficientnet.tfkeras import EfficientNetB2
@@ -82,5 +87,5 @@ input_shape = [1, config["task"]["image_size"][0], config["task"]["image_size"][
 #print(measure(model, mode="cpu"))
 #print(measure(model, mode="tflite", batch_size=1))
 print(measure(model, mode="onnx_cpu", input_shape=input_shape) - removal_cpu)
-#print(measure(model, mode="onnx_gpu") - removal_gpu)
+#print(measure(model, mode="onnx_gpu", input_shape=input_shape) - removal_gpu)
 print(model.count_params())
