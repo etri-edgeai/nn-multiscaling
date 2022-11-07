@@ -49,11 +49,13 @@ def run():
     model = tf.keras.models.load_model(
         args.model_path,
         custom_objects={"SimplePruningGate":SimplePruningGate, "StopGradientLayer":StopGradientLayer})
-    detmodel =  post_prep_infer_(config["task"], model, pretrained=args.pretrained, with_head=True)
+    detmodel =  post_prep_infer_(config["task"], model, pretrained=args.pretrained, with_head=True, with_backbone=True)
 
     driver = infer_lib.ServingDriver.create(
         config["task"]["model_dir"], False, None, config["task"]["model_name"], 1, True, config_)
+
     driver.model = detmodel
+
     image_file = tf.io.read_file(args.image)
     image_arrays = tf.io.decode_image(
         image_file, channels=3, expand_animations=False)
