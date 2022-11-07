@@ -61,13 +61,14 @@ BATCH_SIZE_GPU = 1
 BATCH_SIZE_ONNX_GPU = 1
 BATCH_SIZE_CPU = 1
 
-def tf_convert_onnx(model, input_shape=None):
+def tf_convert_onnx(model, input_shape=None, output_path=None):
     """ tf -> onnx """
     if input_shape is None:
         input_shape = model.input.shape
 
     spec = (tf.TensorSpec(input_shape, tf.float32, name="input"),)
-    output_path = "/tmp/tmp_%d.onnx" % os.getpid()
+    if output_path is None:
+        output_path = "/tmp/tmp_%d.onnx" % os.getpid()
     model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=output_path)
     output_names = [n.name for n in model_proto.graph.output]
     return output_path, output_names
