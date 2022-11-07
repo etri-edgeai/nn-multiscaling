@@ -52,17 +52,6 @@ policy = tf.keras.mixed_precision.Policy("float32")
 tf.keras.mixed_precision.set_global_policy(policy)
 model.backbone.model = change_dtype(model.backbone.model, policy)
 
-#print(model.summary())
-#from efficientnet.tfkeras import EfficientNetB2
-#model = EfficientNetB2(weights='imagenet', input_shape=(260, 260, 3))
-
-#from tensorflow.keras.applications import EfficientNetB0
-#model = tf.keras.applications.efficientnet.EfficientNetB0(
-#    include_top=True, weights='imagenet', input_tensor=None, input_shape=(224, 224, 3), pooling=None, classes=1000,
-#    classifier_activation='softmax')
-
-#print(get_flops(model))
-
 # remove front
 flag = False
 for layer in model.layers:
