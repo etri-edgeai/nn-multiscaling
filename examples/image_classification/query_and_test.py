@@ -26,6 +26,7 @@ parser.add_argument('--obj_ratio', type=float,  help='model', required=True)
 parser.add_argument('--lda', type=float, help='model', required=True)
 parser.add_argument('--alter_ratio', type=float, help='model', required=True)
 parser.add_argument('--metric', type=str, default="tflite", help='model', required=True)
+parser.add_argument('--rand_select', action='store_true')
 
 args = parser.parse_args()
 
@@ -64,7 +65,12 @@ alter_ratio = str(args.alter_ratio)
 dataset_config = args.config
 model_name = args.model_name
 
-cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio
+if args.rand_select:
+    rand_select_str = " --rand_select"
+else:
+    rand_select_str = ""
+
+cmd = "CUDA_VISIBLE_DEVICES="+first+" python -u run.py --config "+dataset_config+" --mode query_gated --model_name "+model_name+" --source_dir "+ dir_ +" --sampling_ratio 1.0 --num_epochs 1 --step_ratio 0.3 --num_partitions 50 --num_imported_submodels 200 --num_approx 200 --postfix "+args.postfix+" --base_value "+base_value+" --obj_ratio "+obj_ratio+" --metric "+metric+" --lda "+lda+ " --alter_ratio "+alter_ratio+rand_select_str
 os.system(cmd)
 
 print(compute_time(model2, metric))

@@ -107,19 +107,24 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1):
+    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1, use_last_types=False):
+        if model_list is not None and len(model_list) == 0:
+            return
+
         nodes_ = []
         gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)
-            n.wakeup()
-            _, parser = B.preprocess(n.net.model, set(), self._custom_objects) # dummy namespace
-            last_types = parser.get_last_types()
-            n.sleep()
-            alters = gen_.generate(
-                n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
-            #    n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+            if use_last_types:
+                n.wakeup()
+                _, parser = B.preprocess(n.net.model, set(), self._custom_objects) # dummy namespace
+                last_types = parser.get_last_types()
+                n.sleep()
+                alters = gen_.generate(
+                    n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+            else:
+                    n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
@@ -155,7 +160,60 @@ class ModelHouse(object):
                 return n
         return None
 
-    def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+    def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0, use_random=False):
+
+        if use_random:
+            print("RANDOM SELECTION")
+            return self._rand_select(spec, return_gated_model, lda, ratio)
+        else:
+            return self._select(spec, return_gated_model, lda, ratio)
+
+
+    def _rand_select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+        metric, obj_value, base_value = spec
+        approx_value = base_value
+       
+        COUNT = 10000
+        nodes = [n for n in self._nodes if n.is_original()]
+        import random
+        minimal = []
+        for i in range(COUNT):
+            random.shuffle(nodes)
+            node = nodes[0]
+
+            anodes = []
+            for node_ in self._nodes:
+                if not node_.is_original():
+                    on = node_.origin
+                    while on.origin != None:
+                        on = on.origin
+
+                    if node == on:
+                        anodes.append(node_)
+            
+            random.shuffle(anodes)
+
+            for a in anodes:
+
+                compatible = True
+                for m in minimal:
+                    if not self._parser.is_compatible(a, m):
+                        compatible = False
+                        break
+                if not compatible:
+                    break
+
+                if a not in minimal:
+                    minimal.append(a)
+                    break
+
+        for m in minimal:
+            print(m.id_, m.tag, m.pos)
+
+        ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
+        return ret
+
+    def _select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
         minimal = []
         nodes = [n for n in self._nodes]
         import random
@@ -229,6 +287,7 @@ class ModelHouse(object):
 
         ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
         return ret
+
 
     @property
     def origin_nodes(self):

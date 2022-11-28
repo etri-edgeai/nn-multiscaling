@@ -1,0 +1,60 @@
+dataset: "imagenet2012"
+num_classes: 1000
+models:
+  - InceptionResNetV2
+  - MobileNetV2
+  - MobileNet
+  - EfficientNetB1
+  - EfficientNetV2B1
+  - EfficientNetV2S
+  - EfficientNetV2B2
+  - EfficientNetB3
+  - MobileNetV3Small
+  - ResNetRS101
+  - ResNetRS152
+
+lr: 0.001
+astep_ratio: 0.1
+sampling_ratio: 1.0
+dloss_scale: 0.1
+memory_limit: 0
+params_limit: 0
+step_ratio: 0.2 # ste
+batch_size_limit: 32 # for profiling
+num_partitions: 20
+num_imported_submodels: 20
+num_approx: 30
+num_submodels_per_bunch: 200
+num_samples_for_profiling: 4
+num_epochs: 1
+pruning_exit: true
+
+training_conf:
+  augmenter_name: "autoaugment"
+  use_amp: true
+  lr_name: "exponential"
+  initial_lr: 0.02
+  t_mul: 2.0
+  m_mul: 1.0
+  alpha: 1.0e-7
+  decay_epochs: 100.0
+  decay_rate: 0.97
+  warmup_epochs: 0
+  opt_name: "sgd"
+  decay: 0.9
+  #epsilon: 1.0e-07
+  epsilon: 0.001
+  momentum: 0.9
+  lookahead: 0
+  moving_average_decay: 0.9999
+  nesterov: false
+  beta_1: 0.9
+  beta_2: 0.999
+  grad_clip_norm: 0
+  grad_accum_steps: 1
+  hvd_fp16_compression: true
+  intratrain_eval_using_ema: true
+  label_smoothing: 0.1
+  weight_decay: 5.0e-6
+  cutmix_alpha: 0.1
+  mixup_alpha: 0.1   

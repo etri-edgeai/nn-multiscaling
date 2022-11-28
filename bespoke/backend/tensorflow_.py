@@ -92,8 +92,11 @@ def _equivalent_v2(a, b):
         return False
 
 
-def equivalent(a, b):
-    return _equivalent_v2(a, b)
+def equivalent(a, b, use_last_types=False):
+    if use_last_types:
+        return _equivalent_v2(a, b)
+    else:
+        return _equivalent(a,b)
 
 class TFParser(common.Parser):
 
@@ -155,7 +158,7 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None, use_adapter=False):
+        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None, use_adapter=False, use_last_types=False):
 
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
@@ -228,8 +231,12 @@ class TFParser(common.Parser):
                     continue
                 history.add((self._parser.model.name, left, right))
 
-                if target_type is not None and not equivalent(self.get_last_types(), target_type):
-                    continue
+                if use_last_types:
+                    if target_type is not None and not equivalent(self.get_last_types(), target_type, use_last_targets):
+                        continue
+                else:
+                    if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_targets):
+                        continue
 
                 if target_shapes is not None:
                     input_shape, output_shape = target_shapes

@@ -341,6 +341,7 @@ def run():
     parser.add_argument('--trmode', action='store_true', help="for transfer learning")
     parser.add_argument('--overwrite', action='store_true')
     parser.add_argument('--init', action='store_true')
+    parser.add_argument('--rand_select', action='store_true')
     overriding_params = [
         ("sampling_ratio", float),
         ("lr", float),
@@ -356,9 +357,13 @@ def run():
         ("num_samples_for_profiling", int),
         ("num_epochs", int),
         ("num_approx", int),
+        ("use_last_types", bool),
     ]
     for name, type_ in overriding_params:
-        parser.add_argument('--'+name, type=type_, default=None, help="method")
+        if type_ != bool:
+            parser.add_argument('--'+name, type=type_, default=None, help="method")
+        else:
+            parser.add_argument('--'+name, action='store_true', help="Binary decision")
     args = parser.parse_args()
 
     model_handler = get_handler(args.model_name)
@@ -461,7 +466,8 @@ def run():
             min_num=config["num_imported_submodels"],
             memory_limit=config["memory_limit"],
             params_limit=config["params_limit"],
-            step_ratio=config["astep_ratio"])
+            step_ratio=config["astep_ratio"],
+            use_last_types=config["use_last_types"])
         use_tl = True
         build_time_t2 = time.time()
         running_time["build_time"].append(build_time_t2 - build_time_t1)
@@ -737,7 +743,7 @@ def run():
         assert base_value > 0
         obj_value = args.obj_ratio
         metric = args.metric
-        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio)
+        gated, non_gated, ex_maps = mh.select((metric, base_value * obj_value, base_value), return_gated_model=True, lda=args.lda, ratio=args.alter_ratio, use_random=args.rand_select)
         student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
         filepath = student_model_save(non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
         student_dir = os.path.dirname(filepath)
