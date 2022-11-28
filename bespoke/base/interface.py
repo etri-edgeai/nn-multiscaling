@@ -124,6 +124,7 @@ class ModelHouse(object):
                 alters = gen_.generate(
                     n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
             else:
+                alters = gen_.generate(
                     n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
