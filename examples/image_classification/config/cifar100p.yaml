@@ -23,7 +23,7 @@ batch_size_limit: 32 # for profiling
 num_partitions: 50
 num_imported_submodels: 50
 num_approx: 200
-num_submodels_per_bunch: 200
+num_submodels_per_bunch: 100
 num_samples_for_profiling: 5
 num_epochs: 20
 pruning_exit: true
