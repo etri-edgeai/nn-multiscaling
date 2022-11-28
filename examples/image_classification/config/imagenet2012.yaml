@@ -31,6 +31,7 @@ num_submodels_per_bunch: 200
 num_samples_for_profiling: 10
 num_epochs: 1
 pruning_exit: true
+use_last_types: false
 
 training_conf:
   augmenter_name: "autoaugment"

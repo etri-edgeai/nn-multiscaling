@@ -27,6 +27,7 @@ num_submodels_per_bunch: 100
 num_samples_for_profiling: 5
 num_epochs: 20
 pruning_exit: true
+use_last_types: false
 
 training_conf:
   use_amp: true
