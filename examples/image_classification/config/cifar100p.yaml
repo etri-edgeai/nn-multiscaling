@@ -17,7 +17,7 @@ dloss_scale: 0.5
 #memory_limit: 405168896
 memory_limit: 0
 params_limit: 0
-step_ratio: 0.2 # ste
+step_ratio: 0.3 # ste
 astep_ratio: 0.1 # ste
 batch_size_limit: 32 # for profiling
 num_partitions: 50
