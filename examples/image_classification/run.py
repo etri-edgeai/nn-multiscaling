@@ -137,7 +137,7 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
     silence_tensorflow()
     num_gpus = len(tf.config.list_physical_devices('GPU'))
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = ",".join([str(c) for c in list(range(1,num_gpus))])
+    os.environ['CUDA_VISIBLE_DEVICES'] = ",".join([str(c) for c in list(range(1,num_gpus+1))])
     hvd.init()
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices) > 0:
@@ -145,7 +145,7 @@ def transfer_learning_(model_path, model_name, config_path, lr=0.1):
             tf.config.experimental.set_memory_growth(
                 physical_devices[i], True
                 )
-        tf.config.set_visible_devices(physical_devices[hvd.local_rank()], 'GPU')
+        tf.config.set_visible_devices(physical_devices[hvd.local_rank()+1], 'GPU')
     tf.random.set_seed(2)
     random.seed(1234)
     np.random.seed(1234)
