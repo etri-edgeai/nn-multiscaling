@@ -235,7 +235,7 @@ class TFParser(common.Parser):
                     if target_type is not None and not equivalent(self.get_last_types(), target_type, use_last_targets):
                         continue
                 else:
-                    if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_targets):
+                    if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_types):
                         continue
 
                 if target_shapes is not None:
@@ -733,11 +733,12 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                 for cg in cgroups:
                     if t in cg:
                         for l in cg:
-                            gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
-                            gates = n.net.model.get_layer(gate_name).gates
-                            backup[gate_name] = gates.numpy()
-                            gates.assign(np.ones(gates.shape[-1],))
-                            print(gates.shape)
+                            if l in n.net.meta["gate_mapping"]:
+                                gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
+                                gates = n.net.model.get_layer(gate_name).gates
+                                backup[gate_name] = gates.numpy()
+                                gates.assign(np.ones(gates.shape[-1],))
+                                print(gates.shape)
                         break
         
         cmodel = n.get_cmodel()
@@ -751,9 +752,10 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
                 for cg in cgroups:
                     if t in cg:
                         for l in cg:
-                            gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
-                            gates = n.net.model.get_layer(gate_name).gates
-                            gates.assign(backup[gate_name])
+                            if l in n.net.meta["gate_mapping"]:
+                                gate_name = n.net.meta["gate_mapping"][l][0]["config"]["name"]
+                                gates = n.net.model.get_layer(gate_name).gates
+                                gates.assign(backup[gate_name])
                         break
 
         onode = origin_nodes[tuple(n.pos)]
