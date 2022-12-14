@@ -1,1 +1,1 @@
-# nn-multiscaling
+# nn-multiscaling-bespoke
