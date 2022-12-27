@@ -223,8 +223,42 @@ def run():
     parser.add_argument('--noigpu', action='store_true')
     parser.add_argument('--notflite', action='store_true')
     parser.add_argument('--pretrained', type=str, default=None, help='model')
+    parser.add_argument('--add', type=str, default=None, help='add [where]')
+    parser.add_argument('--prefix', type=str, default=None, help='prefix')
 
     args = parser.parse_args()
+
+    target_dir = args.target_dir
+    node_file = os.path.join(target_dir, "nodes.json")
+    mh = ModelHouse(None, custom_objects=custom_objects)
+    mh.load(target_dir)
+
+    if args.add is not None:
+        if args.prefix is not None:
+            prefix = args.prefix
+        else:
+            prefix = ""
+
+        if not os.path.exists(node_file+"_backup"):
+            shutil.copy(node_file, node_file+"_backup")
+
+        with open(node_file, "r") as f:
+            nodes = json.load(f)
+
+            with open(args.add, "r") as f:
+                to_add = json.load(f)
+
+                for key, val in to_add["data"].items():
+                    print(key)
+                    node = nodes[key]
+
+                    for metric in val:
+                        node["profile"][prefix+metric] = val[metric]
+
+            with open(node_file, "w") as f:
+                json.dump(nodes, f, indent=4)
+
+        return
 
     with open(args.config, 'r') as stream:
         try:
@@ -246,17 +280,10 @@ def run():
     config["task"]["steps_per_execution"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
     config["task"]["steps_per_epoch"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
 
-    target_dir = args.target_dir
-
     noigpu = args.noigpu
     notflite = args.notflite
-
     gpu_available = tf.test.is_gpu_available()
 
-    node_file = os.path.join(target_dir, "nodes.json")
-
-    mh = ModelHouse(None, custom_objects=custom_objects)
-    mh.load(target_dir)
     detmodel = post_prep_(config["task"], mh._model, pretrained=args.pretrained, with_head=True)
 
     if not os.path.exists(node_file+"_backup"):
