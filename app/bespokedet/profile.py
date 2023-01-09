@@ -220,7 +220,6 @@ def run():
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
     parser.add_argument('--target_dir', type=str, default=None, help='model')
     parser.add_argument('--config', type=str, required=True) # dataset-sensitive configuration
-    parser.add_argument('--noigpu', action='store_true')
     parser.add_argument('--notflite', action='store_true')
     parser.add_argument('--pretrained', type=str, default=None, help='model')
     parser.add_argument('--add', type=str, default=None, help='add [where]')
@@ -239,8 +238,8 @@ def run():
         else:
             prefix = ""
 
-        if not os.path.exists(node_file+"_backup"):
-            shutil.copy(node_file, node_file+"_backup")
+        if not os.path.exists(node_file+"_backup_add"):
+            shutil.copy(node_file, node_file+"_backup_add")
 
         with open(node_file, "r") as f:
             nodes = json.load(f)
@@ -280,7 +279,6 @@ def run():
     config["task"]["steps_per_execution"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
     config["task"]["steps_per_epoch"] = config["task"]["num_examples_per_epoch"] // config["task"]["batch_size"]
 
-    noigpu = args.noigpu
     notflite = args.notflite
     gpu_available = tf.test.is_gpu_available()
 
@@ -340,13 +338,6 @@ def run():
         flops = get_flops(model)
         profile["flops"] = flops
 
-        """
-        if flops > 390000000:
-            gpu = 10000000000.0
-            igpu = 10000000000.0
-            tflite = 100000000000.0
-        else:
-        """
         if node.is_original():
             profile["iacc"] = float(base_acc)
         else:
@@ -356,13 +347,6 @@ def run():
             acc = validate(config["task"], emodel, detmodel)
             profile["iacc"] = float(acc)
 
-        if not noigpu:
-            if node.is_original():
-                igpu = 0.0
-            else:
-                igpu = measure(emodel, mode="gpu")
-                igpu = base["gpu"] - igpu
- 
         if not notflite:
             try:
                 tflite = measure(model, mode="tflite")
@@ -372,15 +356,13 @@ def run():
 
         gpu = 0
         cpu = 0
-        #onnx_gpu = measure(model, mode="onnx_gpu")
+        onnx_gpu = measure(model, mode="onnx_gpu")
         onnx_cpu = measure(model, mode="onnx_cpu")
 
         profile["gpu"] = gpu
-        if not noigpu:
-            profile["igpu"] = igpu
         profile["cpu"] = cpu
         profile["onnx_cpu"] = onnx_cpu
-        #profile["onnx_gpu"] = onnx_gpu
+        profile["onnx_gpu"] = onnx_gpu
 
         if not notflite:
             profile["tflite"] = tflite

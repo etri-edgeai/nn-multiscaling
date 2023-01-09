@@ -264,6 +264,22 @@ class TFNet(common.Net):
         model.set_weights(self._model[1])
         self._model = model
 
+    def update(self, holder):
+        state = self.is_sleeping()
+
+        if self.is_sleeping():
+            self.wakeup()
+
+        for layer in self._model.layers:
+            try:
+                layer_ = holder.get_layer(layer.name)
+                layer.set_weights(layer_.get_weights())
+            except ValueError as e:
+                assert len(layer.get_weights()) == 0
+
+        if self.is_sleeping() == state:
+            self.sleep()
+
     @classmethod
     def load(self, filepath, custom_objects=None):
         """ Load a model from file """
@@ -711,25 +727,24 @@ def cut(model, reference_model, custom_objects):
 def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
     """ Make a model to train with distillation """
 
+    model = model.backbone.model
+
     toutputs = []
+    soutputs = []
     for loc in distil_loc:
-        tlayer, _ = loc
+        tlayer, layer = loc
         toutputs.append(teacher.get_layer(tlayer).output)
-    toutputs.append(teacher.output)
+        soutputs.append(model.get_layer(layer).output)
+
+    toutputs = teacher.output + toutputs
+   
     new_teacher = tf.keras.Model(teacher.input, toutputs)
-    toutputs_ = new_teacher(model.get_layer("input_lambda").output)
+    toutputs_ = new_teacher(model.input)
 
     if model_builder is None:
-        new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
+        new_model = tf.keras.Model(model.input, model.output+toutputs_+soutputs)
     else:
-        new_model = model_builder(model.input, [model.output]+toutputs_)
-
-    for idx, loc in enumerate(distil_loc):
-        tlayer, layer = loc
-        t = tf.cast(toutputs_[idx], tf.float32)
-        s = tf.cast(model.get_layer(layer).output, tf.float32)
-        new_model.add_loss(tf.reduce_mean(tf.keras.losses.mean_squared_error(t, s)*scale))
-    new_model.add_loss(tf.reduce_mean(tf.keras.losses.kl_divergence(model.output, toutputs_[-1])*scale))
+        new_model = model_builder(model.input, model.output+toutputs_+soutputs)
 
     for layer in teacher.layers:
         layer.trainable = False
@@ -737,11 +752,10 @@ def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
     for layer in model.layers:
         layer.trainable = True
         if layer.__class__ == SimplePruningGate:
-            #layer.trainable = False
             layer.collecting = False
             layer.data_collecting = False
-
-    return new_model
+    
+    return new_model, len(distil_loc)
 
 def save_transfering_model(dirpath, house, output_idx, output_map):
     """ Save transferring function for TL """

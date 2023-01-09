@@ -1,25 +1,5 @@
-models:
-  - ResNet50V2
-  - InceptionResNetV2
-  - MobileNetV2
-  - MobileNet
-  - EfficientNetB1
-  - EfficientNetV2B1
-  - EfficientNetV2S
-  - ResNetRS101
-  - ResNetRS152
-
 dloss_scale: 0.5
-memory_limit: 0
-params_limit: 0
-step_ratio: 0.2 # ste
-astep_ratio: 0.1 # ste
-num_partitions: 100
-num_imported_submodels: 200
-num_approx: 200
 num_submodels_per_bunch: 100
-num_samples_for_profiling: 5
-pruning_exit: false
 
 task:
   model_name: "efficientdet-d0"
@@ -30,7 +10,7 @@ task:
   strategy: ""
   use_fake_data: false
   use_xla: false
-  batch_size: 4
+  batch_size: 2
   eval_samples: 548
   mode: "traineval"
   num_examples_per_epoch: 6471
@@ -43,10 +23,7 @@ task:
   max_level: 7
   min_level: 3
   num_scales: 3
-  #aspect_ratios:
-  #  - 1.0
-  #  - 2.0
-  #  - 0.5
+
   anchor_scale: 4.0
   num_classes: 11
   heads:

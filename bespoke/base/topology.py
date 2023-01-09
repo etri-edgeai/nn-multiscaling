@@ -140,6 +140,12 @@ class Node(object):
 
         """
         self._net.wakeup()
+    
+    def update_weights(self, holder):
+        """update weights with new_weights
+
+        """
+        self._net.update(holder)
 
     def get_cmodel(self):
         """ This function returns a compressed version if it has gates.

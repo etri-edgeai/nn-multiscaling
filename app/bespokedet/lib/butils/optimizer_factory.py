@@ -26,7 +26,7 @@ from tensorflow import keras
 from tensorflow_addons.optimizers import MovingAverage
 # pylint: disable=protected-access
 
-from butils import learning_rate
+from lib.butils import learning_rate
 
 
 def fetch_optimizer(model,opt_type) -> tf.keras.optimizers.Optimizer:
