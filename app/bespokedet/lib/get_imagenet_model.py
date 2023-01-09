@@ -24,6 +24,7 @@ endpoints = {
         "block1a_project_bn",
         "block2b_add",
         "block3b_add",
+        "block3b_add",
         "block5c_add",
         "block7a_project_bn"
     ],

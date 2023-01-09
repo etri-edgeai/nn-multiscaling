@@ -55,22 +55,14 @@ from bespoke.base.interface import ModelHouse
 from bespoke import config as bespoke_config
 from bespoke import backend as B
 
-from taskhandler import *
-from butils import optimizer_factory
-from get_imagenet_model import get_model
+from lib.taskhandler import *
+from lib.butils import optimizer_factory
+from lib.get_imagenet_model import get_model
 from automl.efficientdet import utils
 from absl import logging
-from prep import change_dtype
+from lib.prep import change_dtype
 
 logging.set_verbosity(logging.INFO)
-if tf.config.list_physical_devices('GPU'):
-    ds_strategy = tf.distribute.OneDeviceStrategy('device:GPU:0')
-    """
-    gpus = tf.config.list_physical_devices('GPU')
-    ds_strategy = tf.distribute.MirroredStrategy(
-        cross_device_ops=None)
-    logging.info('All devices: %s', gpus)
-    """
 
 custom_objects = {
     "SimplePruningGate":SimplePruningGate,
@@ -270,16 +262,8 @@ def run():
         ("sampling_ratio", float),
         ("lr", float),
         ("dloss_scale", float),
-        ("memory_limit", float),
-        ("params_limit", float),
-        ("step_ratio", float),
-        ("astep_ratio", float),
-        ("num_partitions", int),
-        ("num_imported_submodels", int),
         ("num_submodels_per_bunch", int),
-        ("num_samples_for_profiling", int),
         ("num_epochs", int),
-        ("num_approx", int),
     ]
     for name, type_ in overriding_params:
         parser.add_argument('--'+name, type=type_, default=None, help="method")
@@ -313,6 +297,8 @@ def run():
                 config[key] = getattr(args, key)
                 if hvd.rank() == 0:
                     print("%s ---> %s" % (key, str(config[key])))
+
+    config["pruning_exit"] = False
 
     if args.num_epochs != None:
         config["task"]["num_epochs"] = args.num_epochs
@@ -352,229 +338,196 @@ def run():
         }
 
 
-    with ds_strategy.scope():
-        if args.model_path is not None:
-            if os.path.splitext(args.model_path)[1] != ".h5":
-                model = get_model(args.model_path, config)
-            else:
-                model = tf.keras.models.load_model(args.model_path, custom_objects)
+    if args.model_path is not None:
+        if os.path.splitext(args.model_path)[1] != ".h5":
+            model = get_model(args.model_path, config)
         else:
-            model = None
+            model = tf.keras.models.load_model(args.model_path, custom_objects)
+    else:
+        model = None
 
-        if args.mode in ["train", "backbone_transfer", "finetune"]:
-            precision = utils.get_precision(config["task"]["strategy"], config["task"]["mixed_precision"])
-            policy = tf.keras.mixed_precision.Policy(precision)
-            tf.keras.mixed_precision.set_global_policy(policy)
-            model = change_dtype(model, policy)
+    if args.mode in ["train", "backbone_transfer", "finetune"]:
+        precision = utils.get_precision(config["task"]["strategy"], config["task"]["mixed_precision"])
+        policy = tf.keras.mixed_precision.Policy(precision)
+        tf.keras.mixed_precision.set_global_policy(policy)
+        model = change_dtype(model, policy)
 
-        # Make a model house
-        if args.mode == "train":
+    # Make a model house
+    if args.mode == "train":
+        model = post_prep_(config["task"], model, pretrained=args.pretrained)
+        train_(config["task"], "test", args.target_dir, None, model)
+
+    elif args.mode == "backbone_transfer":
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+        logging.set_verbosity(logging.ERROR)
+
+        model_2 = extract_backbone(config["task"])
+        backbone_transfer(config["task"], model, model_2)
+        return
+
+    elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
+        mh = ModelHouse(None, custom_objects=custom_objects)
+        mh.load(args.source_dir)
+
+    batch_size = config["task"]["batch_size"]
+
+    # Transfer learning
+    if args.mode == "transfer_learning":
+
+        if args.pretrained is not None:
+            print("trained weights transferring...")
+            tr_time_t1 = time.time()
+
             model = post_prep_(config["task"], model, pretrained=args.pretrained)
-            train_(config["task"], "test", args.target_dir, None, model)
-
-        elif args.mode == "backbone_transfer":
-            tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-            logging.set_verbosity(logging.ERROR)
-
-            model_2 = extract_backbone(config["task"])
-            backbone_transfer(config["task"], model, model_2)
-            return
-
-        elif args.mode != "test" and args.mode != "finetune" and args.mode != "cut":
-            mh = ModelHouse(None, custom_objects=custom_objects)
-            mh.load(args.source_dir)
-
-        batch_size = config["task"]["batch_size"]
-
-        # Transfer learning
-        if args.mode == "transfer_learning":
-            assert args.target_dir is not None
-            tl_time_t1 = time.time()
+            # weight transfer from model to mh origin nodes.
             for n in mh.nodes:
-                if args.init and args.mode == "build":
-                    if n.net.is_sleeping():
-                        n.net.wakeup()
-                    if "alter" in n.tag:
-                        gate_weights = {}
-                        for layer in n.net.model.layers:
-                            if type(layer) == SimplePruningGate:
-                                gate_weights[layer.name] = layer.gates.numpy() 
-                        n.net.model = tf.keras.models.clone_model(n.net.model)
-                        for layer in n.net.model.layers:
-                            if type(layer) == SimplePruningGate:
-                                layer.gates.assign(gate_weights[layer.name])
+                if n.is_original():
+                    n.update_weights(model.backbone.model)
+            tr_time_t2 = time.time()
+            print("time: ", tr_time_t2 - tr_time_t1)
 
+        assert args.target_dir is not None
+        tl_time_t1 = time.time()
+        for n in mh.nodes:
+            if not n.net.is_sleeping():
                 n.sleep() # to_cpu 
 
-            config_path = "/tmp/tmp_%d.config" % os.getpid()
-            config["task"] = dump_config(config["task"])
-            with open(config_path, "w") as f:
-                yaml.dump(config, f)
-            
-            transfer_learning(
-                mh,
-                config_path,
-                target_dir=args.target_dir,
-                num_submodels_per_bunch=config["num_submodels_per_bunch"],
-                filter_=filter_,
-            )
-            tl_time_t2 = time.time()
-            running_time["transfer_learning_time"].append(tl_time_t2 - tl_time_t1)
+        config_path = "/tmp/tmp_%d.config" % os.getpid()
+        config["task"] = dump_config(config["task"])
+        with open(config_path, "w") as f:
+            yaml.dump(config, f)
+        
+        transfer_learning(
+            mh,
+            config_path,
+            target_dir=args.target_dir,
+            num_submodels_per_bunch=config["num_submodels_per_bunch"],
+            filter_=None,
+        )
+        tl_time_t2 = time.time()
+        running_time["transfer_learning_time"].append(tl_time_t2 - tl_time_t1)
 
-            mh.save(args.target_dir)
-            with open(os.path.join(args.target_dir, "running_time.log"), "w") as file_:
-                json.dump(running_time, file_)
+        mh.save(args.target_dir)
+        with open(os.path.join(args.target_dir, "running_time.log"), "w") as file_:
+            json.dump(running_time, file_)
 
-        elif args.mode == "test": # Test
-            model = post_prep_(config["task"], model, pretrained=args.pretrained, with_head=True, with_backbone=True)
-            validate_(config["task"], model)
+    elif args.mode == "test": # Test
+        model = post_prep_(config["task"], model, pretrained=args.pretrained, with_head=True, with_backbone=True)
+        validate_(config["task"], model)
 
-        elif args.mode == "finetune": # Test
-            model = post_prep_(config["task"], model, pretrained=args.pretrained, with_head=True)
+    elif args.mode == "finetune": # Test
+        model = post_prep_(config["task"], model, pretrained=args.pretrained, with_head=True)
 
-            finetune_time_t1 = time.time()
-            # model must be a gated model
-            dirname = os.path.dirname(args.model_path)
+        finetune_time_t1 = time.time()
+        # model must be a gated model
+        dirname = os.path.dirname(args.model_path)
+        basename = os.path.splitext(os.path.basename(args.model_path))[0] # ignore gated_ 
+        if args.init:
+            # backup gate
+            gate_weights = {}
+            for layer in model.layers:
+                if type(layer) == SimplePruningGate:
+                    gate_weights[layer.name] = layer.gates.numpy() 
+            model = tf.keras.models.clone_model(model)
+            for layer in model.layers:
+                if type(layer) == SimplePruningGate:
+                    layer.gates.assign(gate_weights[layer.name])
+
+        distil_loc = None
+        if args.teacher_path is not None:
+            teacher = tf.keras.models.load_model(args.teacher_path)
+
+            ex_map_filepath = os.path.join(dirname, basename+".map")
+            if not os.path.exists(ex_map_filepath):
+                ex_map_filepath = os.path.join(dirname, "non"+basename+".map")
+
+            with open(ex_map_filepath, "r") as map_file:
+                ex_maps = json.load(map_file)
+
+            distil_loc = []
+            for locs in ex_maps:
+                for loc in locs[1]:
+                    distil_loc.append((loc[0], loc[1]))
+
+            model_, len_ = B.make_distiller(
+                model, teacher, distil_loc, scale=config["dloss_scale"])
+            distillation = True
+
+            model.backbone.model = model_
+            model.backbone.distil_info = len_
+            model_ = model
+
+        else:
+            model_ = model
+            distillation = False
+            for layer in model.layers:
+                layer.trainable = True
+
+        train_(config["task"], "finetuned_"+basename, dirname, None, model_)
+
+        if hvd.rank() == 0:
+            filepath = student_model_save(
+                model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
+            finetune_time_t2 = time.time()
+            running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
+            running_time_dump(filepath, running_time)
+
+    elif args.mode == "cut":
+        if args.model_path is not None:
             basename = os.path.splitext(os.path.basename(args.model_path))[0] # ignore gated_ 
-            if args.init:
-                # backup gate
-                gate_weights = {}
-                for layer in model.layers:
-                    if type(layer) == SimplePruningGate:
-                        gate_weights[layer.name] = layer.gates.numpy() 
-                model = tf.keras.models.clone_model(model)
-                for layer in model.layers:
-                    if type(layer) == SimplePruningGate:
-                        layer.gates.assign(gate_weights[layer.name])
-
-            distill_set = set()
-            if args.teacher_path is not None:
-                ex_map_filepath = os.path.join(dirname, basename+".map")
-                if not os.path.exists(ex_map_filepath):
-                    ex_map_filepath = os.path.join(dirname, "non"+basename+".map")
-
-                with open(ex_map_filepath, "r") as map_file:
-                    ex_maps = json.load(map_file)
-
-                for locs in ex_maps:
-                    for loc in locs[1]:
-                        distill_set.add(loc[0])
-                        distill_set.add(loc[1])
-
-            distil_loc = None
-            if args.teacher_path is not None:
-                teacher = tf.keras.models.load_model(args.teacher_path)
-
-                ex_map_filepath = os.path.join(dirname, basename+".map")
-                if not os.path.exists(ex_map_filepath):
-                    ex_map_filepath = os.path.join(dirname, "non"+basename+".map")
-
-                with open(ex_map_filepath, "r") as map_file:
-                    ex_maps = json.load(map_file)
-
-                distil_loc = []
-                for locs in ex_maps:
-                    for loc in locs[1]:
-                        distil_loc.append((loc[0], loc[1]))
-
-                model_ = B.make_distiller(
-                    model, teacher, distil_loc, scale=config["dloss_scale"])
-                distillation = True
-
-            elif args.trmode:
-
-                temp_path = os.path.dirname(args.model_path)
-                with open(os.path.join(temp_path, "output_idx.pickle"), "rb") as f:
-                    output_idx = pickle.load(f)
-                with open(os.path.join(temp_path, "output_map.pickle"), "rb") as f:
-                    output_map = pickle.load(f)
-
-                model_ = B.make_transfer_model(model, output_idx, output_map, scale=1.0)
-                distillation = True
-
-            else:
-                model_ = model
-                distillation = False
-                for layer in model.layers:
-                    layer.trainable = True
-
-            train_(config["task"], "finetuned_"+basename, dirname, None, model_)
-
-            if hvd.rank() == 0:
-                filepath = student_model_save(
-                    model, dirname, inplace=True, prefix="finetuned_", postfix=args.postfix)
-                finetune_time_t2 = time.time()
-                running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
-                running_time_dump(filepath, running_time)
-
-        elif args.mode == "cut":
-            if args.model_path is not None:
-                basename = os.path.splitext(os.path.basename(args.model_path))[0] # ignore gated_ 
-                dirname = os.path.dirname(args.model_path)
-                reference_model = tf.keras.models.load_model(args.teacher_path)
-            elif args.source_dir is not None:
-                basename = "finetuned_student"+args.postfix
+            dirname = os.path.dirname(args.model_path)
+            reference_model = tf.keras.models.load_model(args.teacher_path)
+        elif args.source_dir is not None:
+            basename = "finetuned_student"+args.postfix
+            model_path = os.path.join(args.source_dir, "students", basename+".h5")
+            if not os.path.exists(model_path):
+                basename = "gated_student"+args.postfix
                 model_path = os.path.join(args.source_dir, "students", basename+".h5")
                 if not os.path.exists(model_path):
-                    basename = "gated_student"+args.postfix
-                    model_path = os.path.join(args.source_dir, "students", basename+".h5")
-                    if not os.path.exists(model_path):
-                        raise ValueError("fintuned_gated or gated does not exist")
-                model = tf.keras.models.load_model(model_path, custom_objects)
-                dirname = os.path.join(args.source_dir, "students")
-                reference_model = tf.keras.models.load_model(
-                    os.path.join(args.source_dir, "students", "nongated_student"+args.postfix+".h5")
-                )
-            else:
-                raise NotImplementedError("model_path or source_dir should be defined.")
-            model_ = B.cut(model, reference_model, custom_objects)
-            filepath = os.path.join(dirname, "cut_"+basename+args.postfix+".h5")
-            filepath_plot = os.path.join(dirname, "cut_"+basename+args.postfix+".pdf")
-            tf.keras.utils.plot_model(model_, filepath_plot, expand_nested=True, show_shapes=True)
-            tf.keras.models.save_model(model_, filepath, overwrite=True)
-            print(filepath, " is saved...")
-            print(model_.count_params(), reference_model.count_params())
-
-        elif args.mode == "profile": # Profiling
-            assert args.target_dir is not None
-            for n in mh.nodes:
-                n.sleep() # to_cpu 
-            train_data_generator, _ = load_dataset_(config["task"])
-            sample_inputs = []
-            for x,y in train_data_generator:
-                sample_inputs.append(x)
-                if len(sample_inputs) > config["num_samples_for_profiling"]:
-                    break
-            mh.build_sample_data(sample_inputs)
-            mh.profile()
-            mh.save(args.target_dir)
-
-        elif args.mode == "query_gated":
-            query_time_t1 = time.time()
-            for n in mh.nodes:
-                n.sleep() # to_cpu 
-
-            base_value = args.base_value
-            assert base_value > 0
-            obj_value = args.obj_ratio
-            metric = args.metric
-            gated, non_gated, ex_maps = mh.select(
-                (metric, base_value * obj_value, base_value),
-                return_gated_model=True,
-                lda=args.lda,
-                ratio=args.alter_ratio)
-            student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
-            filepath = student_model_save(
-                non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
-            student_dir = os.path.dirname(filepath)
-            basename = os.path.splitext(os.path.basename(filepath))[0]
-            with open(os.path.join(student_dir, "%s.map" % basename), "w") as file_:
-                json.dump(ex_maps, file_)
-            query_time_t2 = time.time()
-            running_time["query_time"].append(query_time_t2 - query_time_t1)
-            
+                    raise ValueError("fintuned_gated or gated does not exist")
+            model = tf.keras.models.load_model(model_path, custom_objects)
+            dirname = os.path.join(args.source_dir, "students")
+            reference_model = tf.keras.models.load_model(
+                os.path.join(args.source_dir, "students", "nongated_student"+args.postfix+".h5")
+            )
         else:
-            raise NotImplementedError("Invalid mode %s" % args.mode)
+            raise NotImplementedError("model_path or source_dir should be defined.")
+        tf.keras.utils.plot_model(reference_model, "testabse.pdf")
+        tf.keras.utils.plot_model(model, "gated.pdf")
+        model_ = B.cut(model, reference_model, custom_objects)
+        filepath = os.path.join(dirname, "cut_"+basename+args.postfix+".h5")
+        filepath_plot = os.path.join(dirname, "cut_"+basename+args.postfix+".pdf")
+        tf.keras.utils.plot_model(model_, filepath_plot, expand_nested=True, show_shapes=True)
+        tf.keras.models.save_model(model_, filepath, overwrite=True)
+        print(filepath, " is saved...")
+        print(model_.count_params(), reference_model.count_params())
+
+    elif args.mode == "query_gated":
+        query_time_t1 = time.time()
+        for n in mh.nodes:
+            n.sleep() # to_cpu 
+
+        base_value = args.base_value
+        assert base_value > 0
+        obj_value = args.obj_ratio
+        metric = args.metric
+        gated, non_gated, ex_maps = mh.select(
+            (metric, base_value * obj_value, base_value),
+            return_gated_model=True,
+            lda=args.lda,
+            ratio=args.alter_ratio)
+        student_model_save(gated, args.source_dir, prefix="gated_", postfix=args.postfix, inplace=False)
+        filepath = student_model_save(
+            non_gated, args.source_dir, prefix="nongated_", postfix=args.postfix, inplace=False)
+        student_dir = os.path.dirname(filepath)
+        basename = os.path.splitext(os.path.basename(filepath))[0]
+        with open(os.path.join(student_dir, "%s.map" % basename), "w") as file_:
+            json.dump(ex_maps, file_)
+        query_time_t2 = time.time()
+        running_time["query_time"].append(query_time_t2 - query_time_t1)
+        
+    else:
+        raise NotImplementedError("Invalid mode %s" % args.mode)
  
 if __name__ == "__main__":
     run()

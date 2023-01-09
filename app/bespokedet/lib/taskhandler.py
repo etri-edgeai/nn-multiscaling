@@ -5,7 +5,7 @@
 import copy
 import tqdm
 
-from train import *
+from lib.train import *
 from automl.efficientdet.tf2 import efficientdet_keras
 from automl.efficientdet.tf2 import train_lib, efficientdet_keras
 from automl.efficientdet.tf2 import util_keras
@@ -23,6 +23,8 @@ class FeatureModel(tf.keras.Model):
     def __init__(self, model):
         super(FeatureModel, self).__init__()
         self.model = model
+        self.num_outputs = len(model.output)
+        self.distil_info = None
 
     def call(self, inputs, training=False, features_only=False):
         """ Call function
@@ -30,9 +32,12 @@ class FeatureModel(tf.keras.Model):
         """
         ret = self.model(inputs, training)
         if features_only:
-            return [ret[-1]] + ret[1:]
+            if self.distil_info is None:
+                return [ret[-1]] + ret[1:]
+            else:
+                return ([ret[self.num_outputs-1]] + ret[1:self.num_outputs], ret[self.num_outputs:])
         else:
-            return ret            
+            return ret 
 
 def build_config(partial_config):
     """ Converting a dict-based configuration to a hparam configuration
