@@ -16,6 +16,9 @@ from nncompress.algorithms.solver.solver import State
 from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingSolver
 
 class ModelState(State):
+    """ A state for executing the simulated annealing solver
+
+    """
 
     def __init__(self, selected_nodes, nodes, parser, metric):
         self.selected_nodes = selected_nodes
@@ -432,14 +435,6 @@ def test():
 
     tf.keras.utils.plot_model(house, to_file="house.pdf", show_shapes=True)
     y = house(data)
-
-
-
-
-
-
-   
-
 
 if __name__ == "__main__":
     test()
