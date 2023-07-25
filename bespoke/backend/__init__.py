@@ -56,9 +56,6 @@ if 'BESPOKE_BACKEND' in os.environ:
 if _BACKEND == 'tensorflow':
     sys.stderr.write('Using TensorFlow backend\n')
     from .tensorflow_ import *
-elif _BACKEND == 'torch':
-    sys.stderr.write('Using torch backend.\n')
-    from .torch_ import *
 else:
     raise ValueError('Unable to import backend : ' + str(_BACKEND))
 
