@@ -20,7 +20,7 @@ class Node(object):
         self._is_original = is_original
 
     def add(self, new, w=0.0):
-        """This function adds a neighborinto its neighbors list.
+        """This function adds a neighbor into its neighbors list.
 
         """
         found = False

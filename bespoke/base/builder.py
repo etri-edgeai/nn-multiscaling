@@ -4,6 +4,9 @@ from bespoke import backend as B
 from bespoke.base.topology import Node
 
 class HouseBuilder(ABC):
+    """ Model House Builder
+
+    """
 
     def __init__(self, model_house):
         self._model_house = model_house
@@ -15,6 +18,9 @@ class HouseBuilder(ABC):
         """
 
 class RandomHouseBuilder(HouseBuilder):
+    """ Random-based Model House Builder
+
+    """
 
     def __init__(self, model_house):
         super(RandomHouseBuilder, self).__init__(model_house)
