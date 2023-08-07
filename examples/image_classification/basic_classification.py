@@ -1,3 +1,6 @@
+""" TaskBuilder for Image Classfication
+
+"""
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
 
@@ -20,6 +23,7 @@ class ImageClassificationBuilder(TaskBuilder):
     """
 
     def __init__(self, config):
+        """ Init function """
         self.config = config
 
     def load_dataset(self, split=None, is_tl=False):

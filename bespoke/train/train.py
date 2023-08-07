@@ -1,3 +1,7 @@
+""" Train wrapper
+
+"""
+
 import math
 import os
 import logging
@@ -26,6 +30,9 @@ def train(
     exclude_val=False,
     sampling_ratio=1.0,
     save_dir=None):
+    """ train function
+
+    """
 
     (train_data_generator, valid_data_generator, test_data_generator), (iters, iters_val) = data_gen
 
@@ -91,6 +98,9 @@ def train(
     return model
 
 def default_get_optimizer_gen(config, is_tl=False, is_distil=False):
+    """ Default get_optimizer_gen
+
+    """
 
     def get_optimizer(iters, epochs):
 
@@ -143,6 +153,9 @@ def default_get_optimizer_gen(config, is_tl=False, is_distil=False):
 
 
 def default_get_loss_gen(config, is_tl=False, is_distil=False):
+    """ Default get_loss_gen
+
+    """
     from bespoke.train.utils import misc
     def get_loss(model):
         loss = {model.output[0].name.split("/")[0]:misc.BespokeTaskLoss(label_smoothing=config["label_smoothing"])}
@@ -157,6 +170,9 @@ def default_get_loss_gen(config, is_tl=False, is_distil=False):
         return get_loss_finetune
 
 def default_get_callbacks_gen(config, is_tl=False, is_distil=False):
+    """ Default get_callbacks_gen
+
+    """
     def get_callbacks(model, optimizer, learning_rate):
         callbacks = []
         callbacks.append(hvd.callbacks.BroadcastGlobalVariablesCallback(0))
@@ -187,6 +203,9 @@ def default_get_callbacks_gen(config, is_tl=False, is_distil=False):
     return get_callbacks
 
 def default_get_metrics_gen(config, is_tl=False, is_distil=False):
+    """ Default get_metrics_gen
+
+    """
     from bespoke.train.utils import misc as misc
     def get_metrics(model):
         metrics={model.output[0].name.split("/")[0]:misc.accuracy}

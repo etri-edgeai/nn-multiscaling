@@ -1,3 +1,7 @@
+""" ModelHouse Implementation
+
+"""
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -361,7 +365,6 @@ class ModelHouse(object):
         self._sample_outputs = {}
         for n in self._nodes:
             if n.is_original():
-                print(n.id_)
                 ret = B.build_samples(self._model, data, n.pos)
                 self._sample_inputs[n.pos[0]] = [ret_[0] for ret_ in ret]
                 self._sample_outputs[n.pos[1]] = [ret_[1] for ret_ in ret]
@@ -427,7 +430,6 @@ class ModelHouse(object):
                 node_dict[key] = self._nodes[-1]
                 
             for key, node_s in serialized.items():
-                print(key)
                 node_dict[key].load(node_s, node_dict, self._custom_objects) 
 
         model_path = B.get_basemodel_path(load_dir)

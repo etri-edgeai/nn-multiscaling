@@ -1,3 +1,7 @@
+""" Evaluate each sub model in terms of several metrics
+
+"""
+
 import os
 import json
 import copy
@@ -53,6 +57,15 @@ BATCH_SIZE_ONNX_GPU = 1
 BATCH_SIZE_CPU = 1
 
 def tf_convert_onnx(model):
+    """ Convert model to onnx model
+
+    Args.
+        model: a keras model
+
+    Returns
+        onnx model file path, output names
+
+    """
     input_shape = model.input.shape
     spec = (tf.TensorSpec(input_shape, tf.float32, name=model.input.name),)
     output_path = "/tmp/tmp_%d.onnx" % os.getpid()
@@ -61,6 +74,15 @@ def tf_convert_onnx(model):
     return output_path, output_names
 
 def tf_convert_tflite(model):
+    """ Convert model to tflite model
+
+    Args.
+        model: a keras model
+
+    Returns
+        tflite model
+
+    """
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.target_spec.supported_ops = [
@@ -71,6 +93,19 @@ def tf_convert_tflite(model):
     return model_
 
 def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
+    """ Evaluate a model in terms of `mode`
+
+    Args.
+        model: a model
+        taskbuilder: TaskBuilder
+        mode: a metric
+        batch_size: a batch size
+        num_rounds: number of repetitions
+
+    Returns
+        result
+
+    """
     model = taskbuilder.prep(model, for_benchmark=True)
     
     total_t = 0
@@ -189,12 +224,25 @@ def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
 
 
 def validate(model, taskbuilder):
+    """ Validate a model
+
+    Args.
+        model: a model
+        taskbuilder: a TaskBuilder obj
+
+    Returns.
+        accuracy value
+
+    """
     model = taskbuilder.prep(model)
     test_data_generator = taskbuilder.load_dataset(split="test")
     taskbuilder.compile(model)
     return model.evaluate(test_data_generator, verbose=1)[1]
 
 def run():
+    """ Run function
+
+    """
 
     parser = argparse.ArgumentParser(description='Bespoke profile', add_help=False)
     parser.add_argument('--config', type=str) # dataset-sensitive configuration
@@ -295,8 +343,10 @@ def run():
         if not notflite:
             try:
                 tflite = measure(model, taskbuilder, mode="tflite")
-            except Exception as e:
+            except ValueError as e:
                 print(e)
+                tflite = 100000000000.0
+            except Exception as e:
                 tflite = 100000000000.0
 
         gpu = 0

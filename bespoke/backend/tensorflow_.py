@@ -17,7 +17,7 @@ from keras_flops import get_flops
 from nncompress.backend.tensorflow_.transformation.pruning_parser import\
     PruningNNParser, StopGradientLayer, has_intersection
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation import parse, inject, cut, unfold
+from nncompress.backend.tensorflow_.transformation import parse, inject, unfold
 from nncompress.backend import add_prefix
 from tqdm import tqdm
 
@@ -37,10 +37,16 @@ STOP_POINTS = [
 
 
 def preprocess(model, namespace, custom_objects):
+    """ Preprocess function for bespoke
+
+    """
     model = unfold(model, custom_objects)
     return model, TFParser(model, namespace, custom_objects)
 
 def _equivalent(a, b):
+    """ Tool hanlding various models
+
+    """
 
     if a.__class__.__name__ == "Activation":
         a = a.activation
@@ -66,8 +72,10 @@ def _equivalent(a, b):
         return False
 
 
-
 def _equivalent_v2(a, b):
+    """ Handling tool v2
+
+    """
 
     def has_normalization(x):
         for _x in x:
@@ -94,14 +102,23 @@ def _equivalent_v2(a, b):
 
 
 def equivalent(a, b, use_last_types=False):
+    """ `equivalent` wrapper
+
+    """
     if use_last_types:
         return _equivalent_v2(a, b)
     else:
         return _equivalent(a,b)
 
 class TFParser(common.Parser):
+    """ Parser for a TF model
+
+    """
 
     def __init__(self, model, namespace, custom_objects=None):
+        """ Init function
+
+        """
         super(TFParser, self).__init__(model, namespace)
         self._parser = PruningNNParser(
             model, custom_objects=custom_objects, namespace=namespace, gate_class=SimplePruningGate)
@@ -109,31 +126,26 @@ class TFParser(common.Parser):
 
         self._joints = None
         self._groups = None
-        self._r_groups = None
         self._trank = None
         self._rtrank = None
         self.build()
 
     def get_id(self, prefix):
+        """ Get an identifier starting with `prefix`
+
+        """
         return self._parser.get_id(prefix)
 
     def get_model_name(self):
+        """ Returns the name of a model
+
+        """
         return self._parser.model.name
 
-    def _compute_constraints(self, layers):
-        constraints = []
-        for layer in layers:
-            if layer.name in self._r_groups:
-                is_already = False
-                for c in constraints:
-                    if c == self._r_groups[layer.name]:
-                        is_already = True
-                        break
-                if not is_already:
-                    constraints.append(self._r_groups[layer.name])
-        return constraints
-
     def _is_compressible(self, layers):
+        """ Determine whether all layers are compressible
+
+        """
         compressible = False
         for layer in layers:
             if layer.__class__.__name__ in ["Conv2D", "Dense", "SeparableConv2D"]:
@@ -142,6 +154,9 @@ class TFParser(common.Parser):
         return compressible
 
     def is_compatible(self, a, b):
+        """ Determine whether a is compatible with b
+
+        """
         pos_a = a.pos
         pos_b = b.pos
 
@@ -157,6 +172,9 @@ class TFParser(common.Parser):
         return False
 
     def extract(self, origin_nodes, maximal, return_gated_model=False):
+        """ Extract (generate) a model by replacing expensive modules with efficient alternatives
+
+        """
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
@@ -174,6 +192,9 @@ class TFParser(common.Parser):
         sample_data=None,
         use_adapter=False,
         use_last_types=False):
+        """ Get random subnetworks in a model
+
+        """
 
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
@@ -247,11 +268,11 @@ class TFParser(common.Parser):
                 history.add((self._parser.model.name, left, right))
 
                 if use_last_types:
-                    if target_type is not None and
-                        not equivalent(self.get_last_types(), target_type, use_last_targets):
+                    if target_type is not None and \
+                        not equivalent(self._get_last_types(), target_type, use_last_targets):
                         continue
                 else:
-                    if target_type is not None and
+                    if target_type is not None and \
                         not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_types):
                         continue
 
@@ -336,6 +357,11 @@ class TFParser(common.Parser):
                         peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
                         try:
                             subnet_[0](data)
+                        except ValueError as e:
+                            print("Extremely large! %d" % pruning_cnt)
+                            print(target_shapes)
+                            pruning_cnt -= 1
+                            continue
                         except Exception as e:
                             print("Extremely large! %d" % pruning_cnt)
                             print(target_shapes)
@@ -369,7 +395,6 @@ class TFParser(common.Parser):
                 print("lack of channels...")
                 continue
 
-            #constraints = self._compute_constraints(layers_)
             if target_shapes is not None and (subnet[0].output.shape[-1] > target_shapes[1][-1] or
                 subnet[0].input.shape[-1] > target_shapes[0][-1]):
 
@@ -406,7 +431,7 @@ class TFParser(common.Parser):
                                     raise NotImplementedError("w's shape: %d" % len(w.shape))
                                 w = np.transpose(w, loc)
                                 sum_ = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
-                                dim = sum_.shape[-1]
+                                dim = sum_.shape[-1] # pylint: disable=E1136
                                 for i in range(dim):
                                     for v in val:
                                         if v[0] <= i and i < v[1]:
@@ -426,20 +451,11 @@ class TFParser(common.Parser):
                                     raise NotImplementedError("w's shape: %d" % len(w.shape))
                                 w = np.transpose(w, loc)
                                 sum_ = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
-                                dim = sum_.shape[-1]
+                                dim = sum_.shape[-1] # pylint: disable=E1136
                                 for i in range(dim):
                                     score[i][1] += sum_[i]
                                 break
 
-                    """
-                    Considering shared convs with input layer.
-
-                    for g, gtop in zip(groups, groups_top):
-                        if has_intersection(g, tuple(subnet[0].input.name)):
-                            sg = g
-                            sgtop = gtop
-                            break
-                    """
                     score = sorted(score, key=lambda x:x[1], reverse=True)
                     input_mask = np.zeros((subnet[0].input.shape[-1]))
                     for cnt, (idx, s) in enumerate(score):
@@ -467,7 +483,7 @@ class TFParser(common.Parser):
                                 w = ws[0]
                                 w = np.abs(w)
                                 sum_ = np.sum(w, axis=tuple([i for i in range(len(w.shape)-1)]))
-                                dim = sum_.shape[-1]
+                                dim = sum_.shape[-1] # pylint: disable=E1136
                                 for i in range(dim):
                                     for v in val:
                                         if v[0] <= i and i < v[1]:
@@ -504,7 +520,7 @@ class TFParser(common.Parser):
                 }
                 subnet_cmodel = subnet_parser.cut(subnet_gmodel, new_spatial_shape=new_spatial_shape)
 
-                if subnet_cmodel.input.shape[-1] != input_shape[-1] or
+                if subnet_cmodel.input.shape[-1] != input_shape[-1] or \
                     subnet_cmodel.output.shape[-1] != output_shape[-1]: # Due to complex dependency.. then skip.
                     del subnet_gmodel
                     del subnet_cmodel
@@ -526,16 +542,19 @@ class TFParser(common.Parser):
 
         return nets
 
-    def get_uniform_subsets(self, num=5):
-        pass
+    def _get_last_types(self):
+        """ Get the types of the last elements (for handling specific models)
 
-    def get_last_types(self):
+        """
         rtrank = sorted(list(self._rtrank.keys()))
         return [
             self._model.get_layer(self._rtrank[l]).__class__ for l in rtrank[-2:]
         ]
 
     def build(self):
+        """ Build function
+
+        """
         # construct t-rank
         v = self._parser.traverse()
         trank = {
@@ -555,8 +574,14 @@ class TFParser(common.Parser):
         self._rtrank = rtrank
 
 class TFNet(common.Net):
+    """ Subnetwork Handler for TensorFlow
+
+    """
 
     def __init__(self, model, custom_objects=None):
+        """ Init function
+
+        """
         super(TFNet, self).__init__(model)
         self._custom_objects = custom_objects
         if custom_objects is None:
@@ -568,6 +593,9 @@ class TFNet(common.Net):
 
     @property
     def input_shapes(self):
+        """ Input shapes
+
+        """
         if self.is_sleeping():
             self.wakeup()
         if type(self._model.input) == list:
@@ -577,6 +605,10 @@ class TFNet(common.Net):
 
     @property
     def output_shapes(self):
+        """ Output shapes
+
+        """
+
         if self.is_sleeping():
             self.wakeup()
         if type(self._model.output) == list:
@@ -585,11 +617,17 @@ class TFNet(common.Net):
             return [self._model.output.shape]
 
     def predict(self, data):
+        """ Predict
+
+        """
         if self.is_sleeping():
             self.wakeup()
         return self._model(data)
 
     def save(self, name, save_dir):
+        """ Save
+
+        """
         if self.is_sleeping():
             self.wakeup()
         filepath = os.path.join(save_dir, name+".h5")
@@ -599,6 +637,9 @@ class TFNet(common.Net):
         return filepath
 
     def profile(self, sample_inputs, sample_outputs, cmodel=None):
+        """ Base Profiling (flops, mse)
+
+        """
         if self.is_sleeping():
             self.wakeup()
         if cmodel is not None:
@@ -614,12 +655,18 @@ class TFNet(common.Net):
         self.sleep()
 
     def get_flops(self):
+        """ Compute FLOPs
+
+        """
         if self.is_sleeping():
             self.wakeup()
         flops = get_flops(self._model, batch_size=1)
         return flops
 
     def get_mse(self, sample_inputs, sample_outputs):
+        """ Compute MSE
+
+        """
         if self.is_sleeping():
             self.wakeup()
         ret = 0
@@ -631,6 +678,9 @@ class TFNet(common.Net):
         return ret
 
     def get_cmodel(self, origin_model):
+        """ Compute cmodel
+
+        """
         if self.is_sleeping():
             self.wakeup()
         flag = False
@@ -651,9 +701,15 @@ class TFNet(common.Net):
         return cmodel
 
     def is_sleeping(self):
+        """ Determine whether this network is in the sleep mode
+
+        """
         return type(self._model) == tuple
 
     def sleep(self):
+        """ Sleep mode for better memory utilization
+
+        """
         json_ = self._model.to_json()
         weights = self._model.get_weights()
         model = self._model
@@ -661,6 +717,9 @@ class TFNet(common.Net):
         del model
 
     def wakeup(self):
+        """ Wakeup mode for better memory utilization
+
+        """
         if type(self._model) != tuple:
             return
         model = tf.keras.models.model_from_json(self._model[0], custom_objects=self._custom_objects)
@@ -673,6 +732,9 @@ class TFNet(common.Net):
 
     @classmethod
     def load(self, filepath, custom_objects=None):
+        """ Load function from a serialized file
+
+        """
         model = load_model(filepath, custom_objects=custom_objects)
         for layer in model.layers:
             if layer.__class__ == SimplePruningGate:
@@ -682,10 +744,16 @@ class TFNet(common.Net):
 
 
 def get_parser(model, namespace, custom_objects):
+    """ Get parser
+
+    """
     return TFParser(model, namespace, custom_objects)
 
 
 def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
+    """ Extract function implementation
+
+    """
 
     groups = parser.get_sharing_groups()
     r_groups = {}
@@ -854,7 +922,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
     model_json = json.dumps(model_dict) 
     try:
         model = tf.keras.models.model_from_json(model_json, custom_objects=parser.custom_objects)
-    except Exception as e:
+    except ValueError as e:
         for ex_map, (target, replacement), pos in zip(ex_maps, replacing_mappings, pos_backup):
             print(ex_map)
             print(target)
@@ -865,6 +933,12 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         import traceback
         traceback.print_exc(file=sys.stdout)
         sys.exit()
+    except Exception as e:
+        import sys
+        import traceback
+        traceback.print_exc(file=sys.stdout)
+        sys.exit()
+       
 
     not_det = set()
     layer_names = [ layer.name for layer in model.layers ]
@@ -961,6 +1035,9 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             return ret
             
 def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
+    """ Prepare for training
+
+    """
     outputs = []
     outputs.extend(model.outputs)
     output_map = []
@@ -1026,14 +1103,23 @@ def make_train_model(model, nodes, scale=0.1, teacher_freeze=True):
 
 
 def backend_net():
+    """ Backend Handling (Needs to check this function is used)
+
+    """
     return TFNet
 
 
 def get_basemodel_path(dir_):
+    """ Get basemodel path
+
+    """
     return os.path.join(dir_, "base.h5")
     
 
 def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
+    """ Pruning function for getting efficient alternatives
+
+    """
 
     # TODO: needs improvement
     """
@@ -1113,7 +1199,7 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
             remained = len(mask)-1
         val_ = sorted_[remained]
         mask = np.zeros((max_,))
-        for cidx in range(mask.shape[0]):
+        for cidx in range(mask.shape[0]): # pylint: disable=E1136
             if mask[cidx] < val_:
                 avoid_prune = False
                 for key, val in items:
@@ -1143,8 +1229,10 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     # test
     try:
         cutmodel = parser.cut(gated_model)
-    except Exception as e:
+    except ValueError as e:
         print(e)
+        return False
+    except Exception as e:
         return False
 
     print(gated_model.count_params(), cutmodel.count_params())
@@ -1170,6 +1258,9 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
 
 def prune_with_sampling(
     net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
+    """ Sampling based pruning
+
+    """
 
     # get inchannel dependency
     def get_vindices(lidx, group_struct):
@@ -1335,7 +1426,7 @@ def prune_with_sampling(
         for key, val in dict_.items():
             if type(key) == str:
                 gates = gated_model.get_layer(gm[(key,0)][0]["config"]["name"]).gates
-                if gates.shape[0] != val[0][1] - val[0][0]:
+                if gates.shape[0] != val[0][1] - val[0][0]: # pylint: disable=E1136
                     return False
                 for v_ in val:
                     gates.assign(mask[v_[0]:v_[1]])
@@ -1343,10 +1434,11 @@ def prune_with_sampling(
     # test
     try:
         cutmodel = parser.cut(gated_model)
-    except Exception as e:
+    except ValueError as e:
         print(e)
         return False
-
+    except Exception as e:
+        return False
 
     print(gated_model.count_params(), cutmodel.count_params())
     if gated_model.count_params() == cutmodel.count_params():
@@ -1371,14 +1463,23 @@ def prune_with_sampling(
 
 
 def save_model(name, model, save_dir):
+    """ Save model
+
+    """
     path = os.path.join(save_dir, name+".h5")
     tf.keras.models.save_model(model, path, overwrite=True)
 
 def load_model_from_node(load_dir, id_, custom_objects=None):
+    """ Load model from a node
+
+    """
     path = os.path.join(load_dir, id_+".h5")
     load_model(path, custom_objects)
 
 def load_model(filepath, custom_objects=None):
+    """ PruningGate-aware model load
+
+    """
     try:
         return tf.keras.models.load_model(filepath, custom_objects=custom_objects)
     except ValueError:
@@ -1395,6 +1496,9 @@ def load_model(filepath, custom_objects=None):
         return model
 
 def generate_pretrained_models(list_=None):
+    """ Pretrained models list
+
+    """
     baselist = [
         tf.keras.applications.ResNet50V2,
         tf.keras.applications.InceptionResNetV2,
@@ -1423,6 +1527,9 @@ def generate_pretrained_models(list_=None):
     return models
 
 def get_type(model, layer_name=None):
+    """ type getter
+
+    """
     if layer_name is None:
         return None
     if model.get_layer(layer_name).__class__ == tf.keras.layers.Activation:
@@ -1433,6 +1540,9 @@ def get_type(model, layer_name=None):
 
 
 def numpyfy(data):
+    """ data -> numpy
+
+    """
 
     if type(data) == list:
         ret = []
@@ -1443,6 +1553,9 @@ def numpyfy(data):
         return data.numpy()
 
 def build_samples(model, data_gen, pos):
+    """ Sampling function
+
+    """
     outputs = [[],[]]
     for idx, p in enumerate(pos):
         for pp in p:
@@ -1457,11 +1570,17 @@ def build_samples(model, data_gen, pos):
     return results
 
 def cut(model, reference_model, custom_objects):
+    """ Gated -> Nongated
+
+    """
     parser = PruningNNParser(reference_model, custom_objects=custom_objects, gate_class=SimplePruningGate)
     parser.parse()
     return parser.cut(model)
 
 def make_distiller(model, teacher, distil_loc, scale=0.1):
+    """ Distillation
+
+    """
 
     toutputs = []
     for loc in distil_loc:
@@ -1493,6 +1612,9 @@ def make_distiller(model, teacher, distil_loc, scale=0.1):
     return new_model
 
 def save_transfering_model(dirpath, house, output_idx, output_map):
+    """ For subnetwork transfer learning
+
+    """
     model_path = os.path.join(dirpath, "model.h5")
     output_idx_path = os.path.join(dirpath, "output_idx.pickle")
     output_map_path = os.path.join(dirpath, "output_map.pickle")
@@ -1511,6 +1633,9 @@ def save_transfering_model(dirpath, house, output_idx, output_map):
     return
 
 def make_transfer_model(model, output_idx, output_map, scale):
+    """ Prepare for subnetwork transfer learning
+
+    """
 
     for (t, s) in output_map:
         t = tf.cast(model.outputs[output_idx[t]], tf.float32)

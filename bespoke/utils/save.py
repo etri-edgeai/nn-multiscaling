@@ -1,9 +1,16 @@
+""" Utility
+
+"""
+
 import os
 import json
 
 import tensorflow as tf
 
 def student_model_save(model, dir_, inplace=False, prefix=None, postfix=""):
+    """ Save student model
+
+    """
 
     if prefix is None:
         prefix = ""
@@ -31,6 +38,9 @@ def student_model_save(model, dir_, inplace=False, prefix=None, postfix=""):
     return filepath
 
 def running_time_dump(model_filepath, running_time):
+    """ Dumping running time
+
+    """
     student_dir = os.path.dirname(model_filepath)
     basename = os.path.splitext(os.path.basename(model_filepath))[0]
     with open(os.path.join(student_dir, "%s.log" % basename), "w") as file_:

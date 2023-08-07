@@ -1,3 +1,7 @@
+""" Runner (build, approximation, finetune, querying)
+
+"""
+
 from __future__ import print_function
 from silence_tensorflow import silence_tensorflow
 silence_tensorflow()
@@ -41,6 +45,9 @@ from bespoke import backend as B
 from bespoke.base.engine import module_load, transfer_learning, build, approximate, finetune, cut, query
 
 def run():
+    """ Run fuction
+
+    """
 
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
     parser.add_argument('--config', type=str) # dataset-sensitive configuration

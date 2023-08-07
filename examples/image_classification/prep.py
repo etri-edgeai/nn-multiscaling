@@ -1,3 +1,6 @@
+""" Preperation for image classification """
+
+
 import json
 
 import tensorflow as tf
@@ -10,6 +13,9 @@ from nncompress.backend.tensorflow_.transformation.pruning_parser import\
     PruningNNParser, StopGradientLayer, has_intersection
 
 def change_dtype_(model_dict, policy, distill_set=None):
+    """ Change dtype in the model
+
+    """
 
     float32 = set()
     for layer in model_dict["config"]["output_layers"]:
@@ -35,6 +41,7 @@ def change_dtype_(model_dict, policy, distill_set=None):
 
 
 def change_dtype(model_, policy, distill_set=None, custom_objects=None):
+    """ Change dtype in the model """
 
     if type(model_) == keras.Sequential:
         input_layer = keras.layers.Input(batch_shape=model_.layers[0].input_shape, name="seq_input")
@@ -54,15 +61,8 @@ def change_dtype(model_, policy, distill_set=None, custom_objects=None):
     return model_
 
 
-def get_custom_objects():
-    custom_objects = {
-        "SimplePruningGate":SimplePruningGate,
-        "StopGradientLayer":StopGradientLayer
-    }
-    return custom_objects
-
-
 def remove_augmentation(model, custom_objects=None):
+    """ Remove augmentation module in the model """
     found = False
     for l in model.layers:
         if l.name == "mixup_weight":
@@ -116,6 +116,7 @@ def add_augmentation(
     image_size,
     train_batch_size=32,
     do_mixup=False, do_cutmix=False, custom_objects=None, update_batch_size=False):
+    """ Add augmentation module into the model """
 
     found = False
     for l in model.layers:

@@ -22,4 +22,5 @@ __all__ = [
 ]
 
 def is_using_hvd():
+    """ Determine whether hvd is used or not """
     return hvd.size() > 1

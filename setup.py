@@ -1,3 +1,7 @@
+"""Bespoke setup
+
+"""
+
 from setuptools import setup
 from setuptools import find_packages
 
@@ -6,7 +10,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bespoke",
-    version="0.5.0",
+    version="1.0.0",
     author="Jong-Ryul Lee",
     author_email="jongryul.lee@etri.re.kr",
     description="Bespoke Project",

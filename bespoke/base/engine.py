@@ -1,3 +1,7 @@
+""" Bespoke Engine (Major functions)
+
+"""
+
 from __future__ import print_function
 from silence_tensorflow import silence_tensorflow
 silence_tensorflow()
@@ -39,6 +43,9 @@ from bespoke.train.train import train
 from bespoke.utils.save import student_model_save
 
 def module_load(task_path):
+    """ Load python module in runtime
+
+    """
     modulename = os.path.splitext(task_path)[0]
     spec = importlib.util.spec_from_file_location(modulename, task_path)
     task = importlib.util.module_from_spec(spec)
@@ -51,6 +58,9 @@ def module_load(task_path):
     raise NotImplementedError("TaskBuilder class not found.")
 
 def transfer_learning_(model_path, config_path, task_path): 
+    """ Transfer learning function that is supposed to be executed via horovod
+
+    """
     silence_tensorflow()
     num_gpus = len(tf.config.list_physical_devices('GPU'))
     
@@ -216,6 +226,9 @@ def transfer_learning(
             json.dump(running_time, file_)
 
 def build(model, target_dir, taskbuilder, running_time=None):
+    """ Build function
+
+    """
     config = taskbuilder.config
     mh = ModelHouse(model)
     build_time_t1 = time.time()
@@ -237,6 +250,9 @@ def build(model, target_dir, taskbuilder, running_time=None):
     return mh
 
 def approximate(source_dir, target_dir, taskbuilder, running_time=None):
+    """ Approximation function (Alternative Set Expansion)
+
+    """
     config = taskbuilder.config
     mh = ModelHouse(None, custom_objects=taskbuilder.get_custom_objects())
     mh.load(source_dir)
@@ -266,6 +282,9 @@ def approximate(source_dir, target_dir, taskbuilder, running_time=None):
     return mh
 
 def finetune(model_path, taskbuilder, postfix="", teacher_path=None, running_time=None):
+    """ Fintuneing
+
+    """
 
     model = taskbuilder.load_model(model_path)
 
@@ -346,6 +365,9 @@ def finetune(model_path, taskbuilder, postfix="", teacher_path=None, running_tim
                 json.dump(running_time, file_)
 
 def cut(model_path, teacher_path, taskbuilder, source_dir, postfix=""):
+    """ Get a nongated model from a gated model
+
+    """
 
     if model_path is not None:
         basename = os.path.splitext(os.path.basename(model_path))[0] # ignore gated_ 

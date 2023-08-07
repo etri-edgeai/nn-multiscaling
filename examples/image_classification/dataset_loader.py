@@ -1,3 +1,7 @@
+""" Dataset Loader
+
+"""
+
 import math
 import os
 import logging
@@ -11,6 +15,9 @@ import horovod.tensorflow.keras as hvd
 from dataloader import dataset_factory
 
 def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
+    """ Resize after center cropping
+
+    """
     shape = tf.shape(image)
     h = shape[0]
     w = shape[1]
@@ -28,15 +35,15 @@ def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bi
     return resized_image
 
 def data_preprocess_func(img, width):
+    """ Data preprocessing """
     img = center_crop_and_resize(img, width)
-    #img = preprocess_input(img)
     return img
 
 def model_preprocess_func(img, shape):
+    """ Model-level preprocessing """
     img = tf.keras.applications.imagenet_utils.preprocess_input(
         img, data_format=None, mode='torch'
         )
-    #img = preprocess_input(img)
     return img
 
 def load_data_nvidia(
@@ -48,6 +55,7 @@ def load_data_nvidia(
     cutmix_alpha=0.0,
     mixup_alpha=0.0,
     sampling_count=None):
+    """ Load dataset via nvidia's examples """
 
     if sampling_count is None:
         sampling_count = (None, None)
@@ -76,7 +84,6 @@ def load_data_nvidia(
         batch_size=batch_size,
         dtype='float32',
         one_hot=True,
-        use_dali=False,
         augmenter=augmenter,
         cache=False,
         mean_subtract=False,
@@ -104,7 +111,6 @@ def load_data_nvidia(
         batch_size=batch_size,
         dtype='float32',
         one_hot=True,
-        use_dali=False,
         augmenter=None,
         cache=False,
         mean_subtract=False,
@@ -130,6 +136,7 @@ def load_dataset(
     sampling_ratio=1.0,
     cutmix_alpha=0.5,
     mixup_alpha=0.5):
+    """ A function to load image classification datasets maintained by tfds """
 
     if dataset == "imagenet2012": 
         num_train_examples = 1281167
