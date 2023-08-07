@@ -8,6 +8,9 @@ from os.path import isfile, join
 from silence_tensorflow import silence_tensorflow
 silence_tensorflow()
 
+import sys
+if '.' not in sys.path:
+  sys.path.insert(0, '.')
 
 from timeit import default_timer as timer
 
@@ -18,8 +21,9 @@ import random
 random.seed(1234)
 import numpy as np
 np.random.seed(1234)
-import sys
+
 import argparse
+import yaml
 
 tf.config.experimental.set_synchronous_execution(True)
 tf.config.experimental.enable_op_determinism()
@@ -35,23 +39,13 @@ if len(physical_devices) > 0:
 from keras_flops import get_flops
 import numpy as np
 from tensorflow.keras.optimizers import Adam
-
-from efficientnet.tfkeras import EfficientNetB0
-
 import tf2onnx
 import onnxruntime as rt
 
 from bespoke.base.interface import ModelHouse
+from bespoke.base.engine import module_load
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
-from prep import remove_augmentation, add_augmentation
-
-from train import load_dataset
-custom_objects = {
-    "SimplePruningGate":SimplePruningGate,
-    "StopGradientLayer":StopGradientLayer
-}
-
 
 BATCH_SIZE_GPU = 1
 BATCH_SIZE_ONNX_GPU = 1
@@ -75,8 +69,8 @@ def tf_convert_tflite(model):
     model_= converter.convert()
     return model_
 
-def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
-    model = remove_augmentation(model, custom_objects)
+def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
+    model = taskbuilder.prep(model, for_benchmark=True)
     
     total_t = 0
     if type(model.input) == list:
@@ -185,43 +179,33 @@ def measure(model, mode="cpu", batch_size=-1, num_rounds=100):
     return avg_time * 1000
 
 
-def validate(model, model_handler, dataset, sampling_ratio=1.0):
-    custom_objects = {
-        "SimplePruningGate":SimplePruningGate,
-        "StopGradientLayer":StopGradientLayer
-    }
-    if dataset == "imagenet2012":
-        n_classes = 1000
-    elif dataset == "cifar100":
-        n_classes = 100
-
-    batch_size = model_handler.batch_size
-    model = add_augmentation(model, model_handler.width, train_batch_size=batch_size, do_mixup=False, do_cutmix=False, custom_objects=custom_objects)
-    (_, _, test_data_generator), (iters, iters_val) = load_dataset(
-        dataset,
-        model_handler,
-        training_augment=False,
-        sampling_ratio=sampling_ratio,
-        n_classes=n_classes)
-    model_handler.compile(model, run_eagerly=False)
-
+def validate(model, taskbuilder):
+    model = taskbuilder.prep(model)
+    test_data_generator = taskbuilder.load_dataset(split="test")
+    taskbuilder.compile(model)
     return model.evaluate(test_data_generator, verbose=1)[1]
 
 def run():
 
-    parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
-    parser.add_argument('--dataset', type=str) # dataset-sensitive configuration
-    parser.add_argument('--target_dir', type=str, default=None, help='model')
-    parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
+    parser = argparse.ArgumentParser(description='Bespoke profile', add_help=False)
+    parser.add_argument('--config', type=str) # dataset-sensitive configuration
+    parser.add_argument('--source_dir', type=str, default=None, help='model')
     parser.add_argument('--sampling_ratio', type=float, default=1.0, help='model')
     parser.add_argument('--noigpu', action='store_true')
     parser.add_argument('--notflite', action='store_true')
 
     args = parser.parse_args()
-    from run import get_handler
-    model_handler = get_handler(args.model_name)
-
     target_dir = args.target_dir
+
+    with open(args.config, 'r') as stream:
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            sys.exit(1)
+
+    task_class = module_load(config["taskbuilder"])
+    taskbuilder = task_class(config)
 
     noigpu = args.noigpu
     notflite = args.notflite
@@ -229,8 +213,9 @@ def run():
     gpu_available = tf.test.is_gpu_available()
 
     node_file = os.path.join(target_dir, "nodes.json")
+    base_file = os.path.join(target_dir, "baseinfo.json")
 
-    mh = ModelHouse(None, custom_objects=custom_objects)
+    mh = ModelHouse(None, custom_objects=taskbuilder.get_custom_objects())
     mh.load(target_dir)
 
     if not os.path.exists(node_file+"_backup"):
@@ -240,13 +225,14 @@ def run():
         nodes = json.load(f)
 
     base = {
-        "gpu": measure(mh.model, mode="gpu"),
-        "cpu": measure(mh.model, mode="cpu"),
-        "onnx_gpu": measure(mh.model, mode="onnx_gpu"),
-        "onnx_cpu": measure(mh.model, mode="onnx_cpu"),
+        "gpu": measure(mh.model, taskbuilder, mode="gpu"),
+        "cpu": measure(mh.model, taskbuilder, mode="cpu"),
+        "onnx_gpu": measure(mh.model, taskbuilder, mode="onnx_gpu"),
+        "onnx_cpu": measure(mh.model, taskbuilder, mode="onnx_cpu"),
     }
     data = {}
-    base_acc = validate(mh._model, model_handler, args.dataset, sampling_ratio=args.sampling_ratio)
+    taskbuilder.config["sampling_ratio"] = args.sampling_ratio
+    base_acc = validate(mh._model, taskbuilder)
     for key, val in nodes.items():
         print("-------", key, val["tag"])
         model_file = os.path.join(target_dir, "nets", key+".h5")
@@ -268,7 +254,7 @@ def run():
             if is_gated:
                 mh.get_node(val["origin"]).net.wakeup()
                 reference_model = mh.get_node(val["origin"]).net.model
-                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=custom_objects, gate_class=SimplePruningGate)
+                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=taskbuilder.get_custom_objects(), gate_class=SimplePruningGate)
                 parser.parse()
                 model_ = parser.cut(model)
                 print(model.count_params(), model_.count_params())
@@ -276,44 +262,34 @@ def run():
                 print("ORIGIN:", data[val["origin"]])
                 mh.get_node(val["origin"]).net.sleep()
 
-        #if "flops" in profile:
-        #    flops = profile["flops"]
-        #else:
         flops = get_flops(model)
         profile["flops"] = flops
 
-        """
-        if flops > 390000000:
-            gpu = 10000000000.0
-            igpu = 10000000000.0
-            tflite = 100000000000.0
-        else:
-        """
         if node.is_original():
             profile["iacc"] = base_acc
         else:
             emodel = mh._parser.extract(mh.origin_nodes, [mh.get_node(key)])
-            acc = validate(emodel, model_handler, args.dataset, sampling_ratio=args.sampling_ratio)
+            acc = validate(emodel, taskbuilder)
             profile["iacc"] = acc
 
         if not noigpu:
             if node.is_original():
                 igpu = 0.0
             else:
-                igpu = measure(emodel, mode="gpu")
+                igpu = measure(emodel, taskbuilder, mode="gpu")
                 igpu = base["gpu"] - igpu
  
         if not notflite:
             try:
-                tflite = measure(model, mode="tflite")
+                tflite = measure(model, taskbuilder, mode="tflite")
             except Exception as e:
                 print(e)
                 tflite = 100000000000.0
 
         gpu = 0
         cpu = 0
-        onnx_gpu = measure(model, mode="onnx_gpu")
-        onnx_cpu = measure(model, mode="onnx_cpu")
+        onnx_gpu = measure(model, taskbuilder, mode="onnx_gpu")
+        onnx_cpu = measure(model, taskbuilder, mode="onnx_cpu")
 
         profile["gpu"] = gpu
         if not noigpu:
@@ -329,6 +305,9 @@ def run():
 
     with open(node_file, "w") as f:
         json.dump(nodes, f, indent=4)
+
+    with open(base_file, "w") as f:
+        json.dump(base, f, indent=4)
 
 if __name__ == "__main__":
     run()

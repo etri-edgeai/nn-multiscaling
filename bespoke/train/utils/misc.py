@@ -1,7 +1,6 @@
-import tensorflow as tf
-
 from tensorflow.keras import losses
 from tensorflow.keras import backend
+import tensorflow as tf
 
 class BespokeTaskLoss(losses.Loss):
 

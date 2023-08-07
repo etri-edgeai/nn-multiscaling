@@ -4,7 +4,6 @@ import tensorflow as tf
 from tensorflow import keras
 
 from dataloader.dataset_factory import *
-from models.custom import GAModel
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection

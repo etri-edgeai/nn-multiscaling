@@ -1406,7 +1406,7 @@ def cut(model, reference_model, custom_objects):
     parser.parse()
     return parser.cut(model)
 
-def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
+def make_distiller(model, teacher, distil_loc, scale=0.1):
 
     toutputs = []
     for loc in distil_loc:
@@ -1416,10 +1416,7 @@ def make_distiller(model, teacher, distil_loc, scale=0.1, model_builder=None):
     new_teacher = tf.keras.Model(teacher.input, toutputs)
     toutputs_ = new_teacher(model.get_layer("input_lambda").output)
 
-    if model_builder is None:
-        new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
-    else:
-        new_model = model_builder(model.input, [model.output]+toutputs_)
+    new_model = tf.keras.Model(model.input, [model.output]+toutputs_)
 
     for idx, loc in enumerate(distil_loc):
         tlayer, layer = loc
@@ -1458,10 +1455,7 @@ def save_transfering_model(dirpath, house, output_idx, output_map):
         
     return
 
-def make_transfer_model(model, output_idx, output_map, scale, model_builder=None):
-
-    if model_builder is not None:
-        model = model_builder(model.input, model.output)
+def make_transfer_model(model, output_idx, output_map, scale):
 
     for (t, s) in output_map:
         t = tf.cast(model.outputs[output_idx[t]], tf.float32)
