@@ -353,7 +353,7 @@ class Dataset:
     }
     try:
       return dtype_map[self._dtype]
-    except:
+    except ValueError:
       raise ValueError('{} provided key. Invalid DType provided. Supported types: {}'.format(self._dtype,
           dtype_map.keys()))
 
@@ -430,12 +430,10 @@ class Dataset:
             output_shapes=shapes,
             output_dtypes=dtypes,
             device_id=hvd.local_rank())
-        # if self.is_training and self._augmenter:
-        #     print('Augmenting with {}'.format(self._augmenter))
-        #     dataset.unbatch().map(self.augment_pipeline, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(self.local_batch_size)
         return dataset
     else:
-        print("Using tf native pipeline for {train} dataloading".format(train = "training" if self.is_training else "validation"))
+        print("Using tf native pipeline for {train} dataloading".format(
+            train = "training" if self.is_training else "validation"))
         dataset = self.load_records()
         dataset = self.pipeline(dataset)
         return dataset
@@ -451,7 +449,8 @@ class Dataset:
         raise ValueError('Dataset must specify a path for the data files.')
 
     if self.sampling_count is not None:
-        dataset = tfds.load(self._dataset, split=self._split).shuffle(self._shuffle_buffer_size).take(self.sampling_count)
+        dataset = tfds.load(self._dataset, split=self._split).shuffle(self._shuffle_buffer_size).take(
+            self.sampling_count)
     else:
         dataset = tfds.load(self._dataset, split=self._split)
     return dataset

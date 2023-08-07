@@ -109,7 +109,8 @@ def transfer_learning_(model_path, config_path, task_path):
     if hvd.size() > 1 and hvd.local_rank() == 0:
         student_model_save(model, dirname, inplace=True, prefix="finetuned_", postfix="ignore")
 
-def transfer_learning(mh, config_path, task_path, target_dir, taskbuilder, filter_=None, num_submodels_per_bunch=25, running_time=None):
+def transfer_learning(
+    mh, config_path, task_path, target_dir, taskbuilder, filter_=None, num_submodels_per_bunch=25, running_time=None):
     """Transfer learning
 
     """
@@ -164,7 +165,11 @@ def transfer_learning(mh, config_path, task_path, target_dir, taskbuilder, filte
                 house, output_idx, output_map = mh.make_train_model(targets, scale=1.0)
                 dirpath = "test"
                 B.save_transfering_model(dirpath, house, output_idx, output_map)
-                horovod.run(transfer_learning_, (os.path.join(dirpath, 'model.h5'), config_path, task_path), np=len(tf.config.list_physical_devices('GPU'))-1, use_mpi=True)
+                horovod.run(
+                    transfer_learning_,
+                    (os.path.join(dirpath, 'model.h5'), config_path, task_path),
+                    np=len(tf.config.list_physical_devices('GPU'))-1,
+                    use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
                     raise Exception("err")
@@ -357,7 +362,8 @@ def cut(model_path, teacher_path, taskbuilder, source_dir, postfix=""):
                 raise ValueError("fintuned_gated or gated does not exist")
         model = taskbuilder.load_model(model_path)
         dirname = os.path.join(source_dir, "students")
-        reference_model = taskbuilder.load_model(os.path.join(source_dir, "students", "nongated_student"+postfix+".h5"))
+        reference_model = taskbuilder.load_model(
+            os.path.join(source_dir, "students", "nongated_student"+postfix+".h5"))
     else:
         raise NotImplementedError("model_path or source_dir should be defined.")
     model_ = B.cut(model, reference_model, taskbuilder.get_custom_objects())
@@ -375,7 +381,8 @@ def query(mh, source_dir, base_value, obj_ratio=0.5, metric="cpu", lda=0.1, post
         n.sleep() # to_cpu 
 
     assert base_value > 0
-    gated, non_gated, ex_maps = mh.select((metric, base_value * obj_ratio, base_value), return_gated_model=True, lda=lda)
+    gated, non_gated, ex_maps = mh.select(
+        (metric, base_value * obj_ratio, base_value), return_gated_model=True, lda=lda)
     student_model_save(gated, source_dir, prefix="gated_", postfix=postfix, inplace=False)
     filepath = student_model_save(non_gated, source_dir, prefix="nongated_", postfix=postfix, inplace=False)
     student_dir = os.path.dirname(filepath)

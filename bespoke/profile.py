@@ -45,7 +45,8 @@ import onnxruntime as rt
 from bespoke.base.interface import ModelHouse
 from bespoke.base.engine import module_load
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+    PruningNNParser, StopGradientLayer, has_intersection
 
 BATCH_SIZE_GPU = 1
 BATCH_SIZE_ONNX_GPU = 1
@@ -111,7 +112,13 @@ def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
         input_data = np.array(np.random.rand(*input_shape), dtype=np.float32)
         x_ortvalue = rt.OrtValue.ortvalue_from_numpy(input_data, DEVICE_NAME, DEVICE_INDEX)
         io_binding = m.io_binding()
-        io_binding.bind_input(name=model.input.name, device_type=x_ortvalue.device_name(), device_id=DEVICE_INDEX, element_type=input_data.dtype, shape=x_ortvalue.shape(), buffer_ptr=x_ortvalue.data_ptr())
+        io_binding.bind_input(
+            name=model.input.name,
+            device_type=x_ortvalue.device_name(),
+            device_id=DEVICE_INDEX,
+            element_type=input_data.dtype,
+            shape=x_ortvalue.shape(),
+            buffer_ptr=x_ortvalue.data_ptr())
         io_binding.bind_output(output_names[0])
         for i in range(10):
             #onnx_pred = m.run(output_names, {model.input.name: input_data})
@@ -128,7 +135,8 @@ def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
     elif mode == "gpu":
         # dummy run
         with tf.device("/gpu:0"):
-            input_data = tf.convert_to_tensor(np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
+            input_data = tf.convert_to_tensor(
+                np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
             for i in range(10):
                 model(input_data, training=False)
 
@@ -141,7 +149,8 @@ def measure(model, taskbuilder, mode="cpu", batch_size=-1, num_rounds=100):
 
     elif mode == "cpu":
         with tf.device("/cpu:0"):
-            input_data = tf.convert_to_tensor(np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
+            input_data = tf.convert_to_tensor(
+                np.array(np.random.rand(*input_shape), dtype=np.float32), dtype=tf.float32)
             for i in range(num_rounds):
                 start = timer()
                 model(input_data, training=False)
@@ -254,7 +263,11 @@ def run():
             if is_gated:
                 mh.get_node(val["origin"]).net.wakeup()
                 reference_model = mh.get_node(val["origin"]).net.model
-                parser = PruningNNParser(reference_model, allow_input_pruning=True, custom_objects=taskbuilder.get_custom_objects(), gate_class=SimplePruningGate)
+                parser = PruningNNParser(
+                    reference_model,
+                    allow_input_pruning=True,
+                    custom_objects=taskbuilder.get_custom_objects(),
+                    gate_class=SimplePruningGate)
                 parser.parse()
                 model_ = parser.cut(model)
                 print(model.count_params(), model_.count_params())

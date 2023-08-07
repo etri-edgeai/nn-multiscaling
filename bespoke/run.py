@@ -229,7 +229,12 @@ def run():
         print("Validation result: %f" % ret)
 
     elif args.mode == "finetune": # Test
-        finetune(args.model_path, taskbuilder, postfix=args.postfix, teacher_path=args.teacher_path, running_time=running_time)
+        finetune(
+            args.model_path,
+            taskbuilder,
+            postfix=args.postfix,
+            teacher_path=args.teacher_path,
+            running_time=running_time)
 
     elif args.mode == "cut":
         cut(args.model_path, args.teacher_path, taskbuilder, args.source_dir, postfix=args.postfix)

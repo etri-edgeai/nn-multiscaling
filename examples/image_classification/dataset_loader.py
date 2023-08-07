@@ -15,14 +15,16 @@ def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bi
     h = shape[0]
     w = shape[1]
 
-    padded_center_crop_size = tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
+    padded_center_crop_size =\
+        tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
     offset_height = ((h - padded_center_crop_size) + 1) // 2
     offset_width = ((w - padded_center_crop_size) + 1) // 2
 
     image_crop = image[offset_height:padded_center_crop_size + offset_height,
                        offset_width:padded_center_crop_size + offset_width]
 
-    resized_image = tf.keras.preprocessing.image.smart_resize(image, [image_size, image_size], interpolation=interpolation)
+    resized_image = tf.keras.preprocessing.image.smart_resize(
+        image, [image_size, image_size], interpolation=interpolation)
     return resized_image
 
 def data_preprocess_func(img, width):
@@ -37,7 +39,15 @@ def model_preprocess_func(img, shape):
     #img = preprocess_input(img)
     return img
 
-def load_data_nvidia(dataset, width, training_augment=True, batch_size=-1, n_classes=100, cutmix_alpha=0.0, mixup_alpha=0.0, sampling_count=None):
+def load_data_nvidia(
+    dataset,
+    width,
+    training_augment=True,
+    batch_size=-1,
+    n_classes=100,
+    cutmix_alpha=0.0,
+    mixup_alpha=0.0,
+    sampling_count=None):
 
     if sampling_count is None:
         sampling_count = (None, None)
@@ -54,11 +64,6 @@ def load_data_nvidia(dataset, width, training_augment=True, batch_size=-1, n_cla
     augmenter = "autoaugment"
     augmenter = None
     augmenter_params = {}
-    #augmenter_params["cutout_const"] = None
-    #augmenter_params["translate_const"] = None
-    #augmenter_params["num_layers"] = None
-    #augmenter_params["magnitude"] = None
-    #augmenter_params["autoaugmentation_name"] = None
 
     builders = []
     builders.append(dataset_factory.Dataset(
@@ -116,7 +121,15 @@ def load_data_nvidia(dataset, width, training_augment=True, batch_size=-1, n_cla
 
     return [ builder.build() for builder in builders ]
 
-def load_dataset(dataset, width, batch_size, training_augment=True, n_classes=100, sampling_ratio=1.0, cutmix_alpha=0.5, mixup_alpha=0.5):
+def load_dataset(
+    dataset,
+    width,
+    batch_size,
+    training_augment=True,
+    n_classes=100,
+    sampling_ratio=1.0,
+    cutmix_alpha=0.5,
+    mixup_alpha=0.5):
 
     if dataset == "imagenet2012": 
         num_train_examples = 1281167
@@ -136,7 +149,15 @@ def load_dataset(dataset, width, batch_size, training_augment=True, n_classes=10
     else:
         sampling_count = (None, None)
 
-    train_data_generator, valid_data_generator = load_data_nvidia(dataset, width=width, batch_size=batch_size, training_augment=training_augment, n_classes=n_classes, sampling_count=sampling_count, cutmix_alpha=cutmix_alpha, mixup_alpha=mixup_alpha)
+    train_data_generator, valid_data_generator = load_data_nvidia(
+        dataset,
+        width=width,
+        batch_size=batch_size,
+        training_augment=training_augment,
+        n_classes=n_classes,
+        sampling_count=sampling_count,
+        cutmix_alpha=cutmix_alpha,
+        mixup_alpha=mixup_alpha)
 
     iters = num_train_examples // (batch_size * hvd.size())
     iters_val = num_val_examples // (batch_size * hvd.size())

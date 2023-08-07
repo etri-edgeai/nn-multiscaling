@@ -4,7 +4,8 @@ from tensorflow.keras import mixed_precision
 from bespoke.base.task import TaskBuilder
 from bespoke.train.utils import optimizer_factory
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+    PruningNNParser, StopGradientLayer, has_intersection
 
 import prep
 from dataset_loader import load_dataset
@@ -55,12 +56,19 @@ class ImageClassificationBuilder(TaskBuilder):
         """
 
         if self.config["use_amp"]:
-            model = prep.change_dtype(model, mixed_precision.global_policy(), custom_objects=self.get_custom_objects())
+            model = prep.change_dtype(
+                model, mixed_precision.global_policy(), custom_objects=self.get_custom_objects())
         if is_teacher or for_benchmark:
             model = prep.remove_augmentation(model, custom_objects=self.get_custom_objects())
         else:
             model = prep.add_augmentation(
-                model, self.config["width"], train_batch_size=self.config["batch_size"], do_mixup=self.config["mixup_alpha"] > 0, do_cutmix=self.config["cutmix_alpha"] > 0, custom_objects=self.get_custom_objects(), update_batch_size=True)
+                model,
+                self.config["width"],
+                train_batch_size=self.config["batch_size"],
+                do_mixup=self.config["mixup_alpha"] > 0,
+                do_cutmix=self.config["cutmix_alpha"] > 0,
+                custom_objects=self.get_custom_objects(),
+                update_batch_size=True)
 
         return model
 
@@ -70,6 +78,7 @@ class ImageClassificationBuilder(TaskBuilder):
         """
         if mode == "eval":
             adam = tf.keras.optimizers.Adam(0.001)
-            model.compile(optimizer=adam, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=run_eagerly)
+            model.compile(
+                optimizer=adam, loss="categorical_crossentropy", metrics=['accuracy'], run_eagerly=run_eagerly)
         else:
             raise NotImplementedError("Not implemented")

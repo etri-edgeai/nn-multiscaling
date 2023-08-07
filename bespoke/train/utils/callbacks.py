@@ -380,7 +380,11 @@ class TimeHistory(tf.keras.callbacks.Callback):
 
       self.timestamp_log.append(BatchTimestamp(self.global_steps, now))
       elapsed_time_str='{:.2f} seconds'.format(elapsed_time)
-      self.logger.log(step='PARAMETER', data={'TimeHistory': elapsed_time_str, 'examples/second': examples_per_second, 'steps': (self.last_log_step, self.global_steps)})
+      self.logger.log(
+        step='PARAMETER',
+        data={'TimeHistory': elapsed_time_str,
+        'examples/second': examples_per_second,
+        'steps': (self.last_log_step, self.global_steps)})
 
       if self.summary_writer:
         with self.summary_writer.as_default():

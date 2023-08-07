@@ -110,7 +110,14 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1, use_last_types=False):
+    def build_base(
+        self,
+        model_list=None,
+        min_num=20,
+        memory_limit=None,
+        params_limit=None,
+        step_ratio=0.1,
+        use_last_types=False):
         if model_list is not None and len(model_list) == 0:
             return
 
@@ -125,10 +132,20 @@ class ModelHouse(object):
                 last_types = parser.get_last_types()
                 n.sleep()
                 alters = gen_.generate(
-                    n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+                    n.net,
+                    last_types,
+                    memory_limit=memory_limit,
+                    params_limit=params_limit,
+                    step_ratio=step_ratio,
+                    use_adapter=True)
             else:
                 alters = gen_.generate(
-                    n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+                    n.net,
+                    n.pos[1][0],
+                    memory_limit=memory_limit,
+                    params_limit=params_limit,
+                    step_ratio=step_ratio,
+                    use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
@@ -136,7 +153,14 @@ class ModelHouse(object):
                 na.sleep()
         self._nodes.extend(nodes_)
 
-    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, pruning_exit=False, data=None):
+    def build_approx(
+        self,
+        min_num=20,
+        memory_limit=None,
+        params_limit=None,
+        init=False,
+        pruning_exit=False,
+        data=None):
         if data is not None:
             self.build_sample_data(data)
 
@@ -148,7 +172,13 @@ class ModelHouse(object):
             tag = "app_origin" if n.tag == "origin" else "app_alter"
             scale = np.random.choice([0.05, 0.075, 0.1, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75])
             sample_data = self._sample_inputs[n.pos[0]]
-            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init, pruning_exit=pruning_exit)
+            alters = gen_.generate(
+                n.net,
+                [scale],
+                sample_data=sample_data,
+                custom_objects=self._custom_objects,
+                init=init,
+                pruning_exit=pruning_exit)
 
             if not alters:
                 continue
@@ -258,9 +288,11 @@ class ModelHouse(object):
                         score = max(approx_value / obj_value, 1.0)
                     else:
                         if metric != "igpu":
-                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) +\
+                                (on._profile["iacc"] - n._profile["iacc"]) * lda
                         else:
-                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"]\
+                                - n._profile["iacc"]) * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score

@@ -468,14 +468,16 @@ def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bi
     h = shape[0]
     w = shape[1]
 
-    padded_center_crop_size = tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
+    padded_center_crop_size =\
+        tf.cast((image_size / (image_size + crop_padding)) * tf.cast(tf.math.minimum(h, w), tf.float32), tf.int32)
     offset_height = ((h - padded_center_crop_size) + 1) // 2
     offset_width = ((w - padded_center_crop_size) + 1) // 2
 
     image_crop = image[offset_height:padded_center_crop_size + offset_height,
                        offset_width:padded_center_crop_size + offset_width]
 
-    resized_image = tf.keras.preprocessing.image.smart_resize(image, [image_size, image_size], interpolation=interpolation)
+    resized_image = tf.keras.preprocessing.image.smart_resize(
+        image, [image_size, image_size], interpolation=interpolation)
     return resized_image
 
 def preprocess_for_train(images: tf.Tensor,

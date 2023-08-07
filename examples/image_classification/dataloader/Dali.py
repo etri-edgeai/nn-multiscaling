@@ -106,8 +106,14 @@ class DaliPipeline(dali.pipeline.Pipeline):
         images = self.decode(images)
         #if not self.training:
         shapes = self.shapes(images)
-        h = self.extract_h(shapes, dali.types.Constant(np.array([0], dtype=np.float32)), dali.types.Constant(np.array([1], dtype=np.float32)))
-        w = self.extract_w(shapes, dali.types.Constant(np.array([1], dtype=np.float32)), dali.types.Constant(np.array([1], dtype=np.float32)))
+        h = self.extract_h(
+            shapes,
+            dali.types.Constant(np.array([0], dtype=np.float32)),
+            dali.types.Constant(np.array([1], dtype=np.float32)))
+        w = self.extract_w(
+            shapes,
+            dali.types.Constant(np.array([1], dtype=np.float32)),
+            dali.types.Constant(np.array([1], dtype=np.float32)))
         CROP_PADDING = 32
         CROP_H = h * h / (h + CROP_PADDING)
         CROP_W = w * w / (w + CROP_PADDING)

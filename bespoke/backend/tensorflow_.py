@@ -14,7 +14,8 @@ import tensorflow as tf
 import numpy as np
 from keras_flops import get_flops
 
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+    PruningNNParser, StopGradientLayer, has_intersection
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation import parse, inject, cut, unfold
 from nncompress.backend import add_prefix
@@ -102,7 +103,8 @@ class TFParser(common.Parser):
 
     def __init__(self, model, namespace, custom_objects=None):
         super(TFParser, self).__init__(model, namespace)
-        self._parser = PruningNNParser(model, custom_objects=custom_objects, namespace=namespace, gate_class=SimplePruningGate)
+        self._parser = PruningNNParser(
+            model, custom_objects=custom_objects, namespace=namespace, gate_class=SimplePruningGate)
         self._parser.parse()
 
         self._joints = None
@@ -158,7 +160,20 @@ class TFParser(common.Parser):
         return extract(self._parser, origin_nodes, maximal, self._trank, return_gated_model=return_gated_model)
 
     def get_random_subnets(
-        self, num=1, target_shapes=None, target_type=None, memory_limit=None, params_limit=None, step_ratio=0.1, batch_size=32, history=None, use_prefix=False, use_random_walk=False, sample_data=None, use_adapter=False, use_last_types=False):
+        self,
+        num=1,
+        target_shapes=None,
+        target_type=None,
+        memory_limit=None,
+        params_limit=None,
+        step_ratio=0.1,
+        batch_size=32,
+        history=None,
+        use_prefix=False,
+        use_random_walk=False,
+        sample_data=None,
+        use_adapter=False,
+        use_last_types=False):
 
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
@@ -232,10 +247,12 @@ class TFParser(common.Parser):
                 history.add((self._parser.model.name, left, right))
 
                 if use_last_types:
-                    if target_type is not None and not equivalent(self.get_last_types(), target_type, use_last_targets):
+                    if target_type is not None and
+                        not equivalent(self.get_last_types(), target_type, use_last_targets):
                         continue
                 else:
-                    if target_type is not None and not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_types):
+                    if target_type is not None and
+                        not equivalent(self._model.get_layer(self._rtrank[right]), target_type, use_last_types):
                         continue
 
                 if target_shapes is not None:
@@ -255,7 +272,7 @@ class TFParser(common.Parser):
                     target_schange = right_shape[1] / left_shape[1]
                     target_cchange = right_shape[-1] / left_shape[-1]
 
-                    if not(spatial_change == target_schange and\
+                    if not(spatial_change == target_schange and
                         ((input_shape[-1] <= left_shape[-1] and output_shape[-1] <= right_shape[-1]) or use_adapter)):
                         continue
 
@@ -270,11 +287,16 @@ class TFParser(common.Parser):
                 # Assumption: # of inputs is 1.
                 in_target_shapes_ = [target_shapes[0]] if target_shapes is not None else None
                 out_target_shapes_ = [target_shapes[1]] if target_shapes is not None else None
-                subnet = self._parser.get_subnet(layers_, self._model, in_target_shapes_, out_target_shapes_, use_adapter=use_adapter)
+                subnet = self._parser.get_subnet(
+                    layers_, self._model, in_target_shapes_, out_target_shapes_, use_adapter=use_adapter)
                 if use_prefix:
                     prefix = subnet[0].name+"_"
                     subnet_ = [None for _ in range(3)]
-                    subnet_[0] = add_prefix(subnet[0], subnet[0].name+"_", custom_objects=self._parser.custom_objects, not_change_model_name=True)
+                    subnet_[0] = add_prefix(
+                        subnet[0],
+                        subnet[0].name+"_",
+                        custom_objects=self._parser.custom_objects,
+                        not_change_model_name=True)
                     subnet_[1] = [
                         prefix+item for item in subnet[1]
                     ]
@@ -294,7 +316,12 @@ class TFParser(common.Parser):
                     if pruning_cnt < len(scales) and pruning_cnt > -1:
                         scale = scales[pruning_cnt]
                         print("Pruning! %f %d" % (scale, pruning_cnt))
-                        subnet_ = prune(subnet[0], scale, self._namespace, custom_objects=self._parser.custom_objects, ret_model=True)
+                        subnet_ = prune(
+                            subnet[0],
+                            scale,
+                            self._namespace,
+                            custom_objects=self._parser.custom_objects,
+                            ret_model=True)
                         subnet_ = tuple([subnet_] + list(subnet)[1:])
                     elif pruning_cnt < 0:
                         giveup = True
@@ -337,12 +364,14 @@ class TFParser(common.Parser):
             if subnet is None:
                 continue
 
-            if target_shapes is not None and (subnet[0].output.shape[-1] < target_shapes[1][-1] or subnet[0].input.shape[-1] < target_shapes[0][-1]):
+            if target_shapes is not None and (subnet[0].output.shape[-1] < target_shapes[1][-1] or
+                subnet[0].input.shape[-1] < target_shapes[0][-1]):
                 print("lack of channels...")
                 continue
 
             #constraints = self._compute_constraints(layers_)
-            if target_shapes is not None and (subnet[0].output.shape[-1] > target_shapes[1][-1] or subnet[0].input.shape[-1] > target_shapes[0][-1]):
+            if target_shapes is not None and (subnet[0].output.shape[-1] > target_shapes[1][-1] or
+                subnet[0].input.shape[-1] > target_shapes[0][-1]):
 
                 print(subnet[0].output.shape[-1], subnet[0].input.shape[-1], target_shapes[0][-1], target_shapes[1][-1])
                 subnet_parser = PruningNNParser(subnet[0], allow_input_pruning=True, gate_class=SimplePruningGate)
@@ -475,7 +504,8 @@ class TFParser(common.Parser):
                 }
                 subnet_cmodel = subnet_parser.cut(subnet_gmodel, new_spatial_shape=new_spatial_shape)
 
-                if subnet_cmodel.input.shape[-1] != input_shape[-1] or subnet_cmodel.output.shape[-1] != output_shape[-1]: # Due to complex dependency.. then skip.
+                if subnet_cmodel.input.shape[-1] != input_shape[-1] or
+                    subnet_cmodel.output.shape[-1] != output_shape[-1]: # Due to complex dependency.. then skip.
                     del subnet_gmodel
                     del subnet_cmodel
                     continue
@@ -518,7 +548,6 @@ class TFParser(common.Parser):
         }
         def f(node_dict):
             return self._model.get_layer(node_dict["layer_dict"]["name"]).__class__ in STOP_POINTS
-            #return len(node_dict["layer_dict"]["inbound_nodes"]) > 0 and len(node_dict["layer_dict"]["inbound_nodes"][0]) == 1
         joints = self._parser.get_joints(filter_=f)
 
         self._joints = joints
@@ -614,7 +643,8 @@ class TFNet(common.Net):
         if not flag:
             return self.model
 
-        parser = PruningNNParser(origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
+        parser = PruningNNParser(
+            origin_model, allow_input_pruning=True, custom_objects=self._custom_objects, gate_class=SimplePruningGate)
         parser.parse()
         cmodel = parser.cut(self._model)
         self.sleep()
@@ -674,8 +704,11 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         if n.origin is None:
             continue
         n.origin.net.wakeup()
-        cparser[n.id_] = PruningNNParser(\
-                n.origin.net.model, allow_input_pruning=True, custom_objects=n.origin.net._custom_objects, gate_class=SimplePruningGate)
+        cparser[n.id_] = PruningNNParser(
+                n.origin.net.model,
+                allow_input_pruning=True,
+                custom_objects=n.origin.net._custom_objects,
+                gate_class=SimplePruningGate)
         cparser[n.id_].parse()
         input_, output_ = n.pos
         
@@ -828,7 +861,8 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
             print(replacement)
             print(pos)
             print("---")
-        import sys, traceback
+        import sys
+        import traceback
         traceback.print_exc(file=sys.stdout)
         sys.exit()
 
@@ -1016,9 +1050,19 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     """
 
     if type(net) == TFNet:
-        parser = PruningNNParser(net.model, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(
+            net.model,
+            allow_input_pruning=pruning_exit,
+            custom_objects=custom_objects,
+            gate_class=SimplePruningGate,
+            namespace=namespace)
     else:
-        parser = PruningNNParser(net, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(
+            net,
+            allow_input_pruning=pruning_exit,
+            custom_objects=custom_objects,
+            gate_class=SimplePruningGate,
+            namespace=namespace)
     parser.parse()
 
     gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=pruning_exit, with_mapping=True)
@@ -1124,7 +1168,8 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
         net.meta["gate_mapping"] = gate_mapping
     return net
 
-def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
+def prune_with_sampling(
+    net, scale, namespace, sample_data, custom_objects=None, ret_model=False, init=False, pruning_exit=False):
 
     # get inchannel dependency
     def get_vindices(lidx, group_struct):
@@ -1153,9 +1198,19 @@ def prune_with_sampling(net, scale, namespace, sample_data, custom_objects=None,
         return vindices
 
     if type(net) == TFNet:
-        parser = PruningNNParser(net.model, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(
+            net.model,
+            allow_input_pruning=pruning_exit,
+            custom_objects=custom_objects,
+            gate_class=SimplePruningGate,
+            namespace=namespace)
     else:
-        parser = PruningNNParser(net, allow_input_pruning=pruning_exit, custom_objects=custom_objects, gate_class=SimplePruningGate, namespace=namespace)
+        parser = PruningNNParser(
+            net,
+            allow_input_pruning=pruning_exit,
+            custom_objects=custom_objects,
+            gate_class=SimplePruningGate,
+            namespace=namespace)
     parser.parse()
 
     gated_model, gm = parser.inject(with_splits=True, allow_pruning_last=pruning_exit, with_mapping=True)

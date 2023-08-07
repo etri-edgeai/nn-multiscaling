@@ -29,7 +29,14 @@ class PruningGenerator(Generator):
             if sample_data is None or random.random() > 0.5:
                 alter = B.prune(net, scale, self._namespace, init=init, custom_objects=custom_objects)
             else:
-                alter = B.prune_with_sampling(net, scale, self._namespace, sample_data, init=init, pruning_exit=pruning_exit, custom_objects=custom_objects)
+                alter = B.prune_with_sampling(
+                    net,
+                    scale,
+                    self._namespace,
+                    sample_data,
+                    init=init,
+                    pruning_exit=pruning_exit,
+                    custom_objects=custom_objects)
             if not alter:
                 return False
             alternatives.append(alter)
@@ -43,7 +50,16 @@ class PretrainedModelGenerator(Generator):
         for m in self.models:
             m.build()
 
-    def generate(self, net, last=None, num=1, memory_limit=None, params_limit=None, sample_data=None, step_ratio=0.1, use_adapter=False, use_last_types=False):
+    def generate(self,
+        net,
+        last=None,
+        num=1,
+        memory_limit=None,
+        params_limit=None,
+        sample_data=None,
+        step_ratio=0.1,
+        use_adapter=False,
+        use_last_types=False):
         # TODO: single input shape
         input_shape = net.input_shapes[0]
         output_shape = net.output_shapes[0]

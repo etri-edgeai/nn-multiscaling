@@ -6,7 +6,8 @@ from tensorflow import keras
 from dataloader.dataset_factory import *
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import PruningNNParser, StopGradientLayer, has_intersection
+from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+    PruningNNParser, StopGradientLayer, has_intersection
 
 def change_dtype_(model_dict, policy, distill_set=None):
 
@@ -110,7 +111,11 @@ def remove_augmentation(model, custom_objects=None):
     return model_
 
 
-def add_augmentation(model, image_size, train_batch_size=32, do_mixup=False, do_cutmix=False, custom_objects=None, update_batch_size=False):
+def add_augmentation(
+    model,
+    image_size,
+    train_batch_size=32,
+    do_mixup=False, do_cutmix=False, custom_objects=None, update_batch_size=False):
 
     found = False
     for l in model.layers:
@@ -133,13 +138,13 @@ def add_augmentation(model, image_size, train_batch_size=32, do_mixup=False, do_
       images,mixup_weights,cutmix_masks,is_tr_split = args
       return tf.cond(tf.keras.backend.equal(is_tr_split[0],0), 
                      lambda: images, # eval phase
-                     lambda: mixing_lite(images,mixup_weights,cutmix_masks, train_batch_size, do_mixup, do_cutmix)) # tr phase
+                     lambda: mixing_lite(images,mixup_weights,cutmix_masks, train_batch_size, do_mixup, do_cutmix))
 
     input_shape = (image_size, image_size, 3)  # Should handle any image size
     image_input = tf.keras.layers.Input(shape=input_shape, name="image")
     mixup_input = tf.keras.layers.Input(shape=(1, 1, 1), name="mixup_weight")
     cutmix_input = tf.keras.layers.Input(shape=(None, None, 1), name="cutmix_mask")
-    is_tr_split = tf.keras.layers.Input(shape=(1), name="is_tr_split") # indicates whether we use tr or eval data loader
+    is_tr_split = tf.keras.layers.Input(shape=(1), name="is_tr_split")
     inputs = [image_input,mixup_input,cutmix_input,is_tr_split]
 
     mixup_weights = inputs[1]

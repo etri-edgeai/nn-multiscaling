@@ -44,7 +44,8 @@ def train(
     metrics, monitor = get_metrics_gen(config, is_tl=is_tl, is_distil=is_distil)(model)
 
     # compile
-    model.compile(optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=False, experimental_run_tf_function=False)
+    model.compile(
+        optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=False, experimental_run_tf_function=False)
 
     if save_dir is not None and hvd.local_rank() == 0:
         model_name_ = '%s.best.h5' % prefix
@@ -134,7 +135,8 @@ def default_get_optimizer_gen(config, is_tl=False, is_distil=False):
             params=opt_params
         )
 
-        optimizer = hvd.DistributedOptimizer(optimizer, compression=hvd.Compression.fp16 if config["hvd_fp16_compression"] else hvd.Compression.none)
+        optimizer = hvd.DistributedOptimizer(
+            optimizer, compression=hvd.Compression.fp16 if config["hvd_fp16_compression"] else hvd.Compression.none)
 
         return optimizer, learning_rate
     return get_optimizer
