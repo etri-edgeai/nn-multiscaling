@@ -139,7 +139,7 @@ def _convert_angles_to_transform(
 
   """
   angles = tf.convert_to_tensor(angles, dtype=tf.float32)
-  if len(angles.get_shape()) == 0:  # pylint: disable=g-explicit-length-test
+  if len(angles.get_shape()) == 0:
     angles = angles[None]
   elif len(angles.get_shape()) != 1:
     raise TypeError('Angles should have a rank 0 or 1.')
@@ -995,10 +995,8 @@ class RandAugment(ImageAugment):
                                            self.translate_const)
         branch_fns.append((
             i,
-            # pylint: disable=g-long-lambda
             lambda selected_func=func, selected_args=args: selected_func(
                 image, *selected_args)))
-        # pylint: enable=g-long-lambda
 
       image = tf.switch_case(branch_index=op_to_select,
                              branch_fns=branch_fns,
