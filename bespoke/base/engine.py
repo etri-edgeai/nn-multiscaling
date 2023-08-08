@@ -182,7 +182,7 @@ def transfer_learning(
                     use_mpi=True)
 
                 if not os.path.exists(os.path.join(dirpath, f"finetuned_studentignore.h5")):
-                    raise Exception("err")
+                    raise ValueError("err")
                 else:
                     # load and transfer model.
                     trmodel = taskbuilder.load_model(os.path.join(dirpath, f"finetuned_studentignore.h5"))
@@ -194,7 +194,7 @@ def transfer_learning(
                 import gc
                 gc.collect()
 
-            except Exception as e:
+            except ValueError as e:
                 print(e)
                 traceback.print_exc()
                 print("Memory Problem Occurs %d" % cnt)
@@ -397,6 +397,7 @@ def cut(model_path, teacher_path, taskbuilder, source_dir, postfix=""):
     print(model_.count_params(), reference_model.count_params())
 
 def query(mh, source_dir, base_value, obj_ratio=0.5, metric="cpu", lda=0.1, postfix="", running_time=None):
+    """ Query function """
 
     query_time_t1 = time.time()
     for n in mh.nodes:

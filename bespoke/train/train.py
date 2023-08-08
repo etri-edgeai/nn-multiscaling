@@ -179,16 +179,20 @@ def default_get_callbacks_gen(config, is_tl=False, is_distil=False):
         callbacks.append(hvd.callbacks.MetricAverageCallback())
 
         class StepCounter(tf.keras.callbacks.Callback):
+            """ Compute num of steps """
 
             def __init__(self, scheduler):
+                """ Init function """
                 super(StepCounter, self).__init__()
                 self.scheduler = scheduler
                 self._counter = 1
 
             def on_train_batch_begin(self, batch, logs=None):
+                """ on train batch begin """
                 self._counter += 1
 
             def on_epoch_begin(self, epoch, logs=None):
+                """ on epoch begin """
                 print(self.scheduler(self._counter))
 
         if hvd.rank() == 0:
@@ -208,10 +212,12 @@ def default_get_metrics_gen(config, is_tl=False, is_distil=False):
     """
     from bespoke.train.utils import misc as misc
     def get_metrics(model):
+        """ get metrics """
         metrics={model.output[0].name.split("/")[0]:misc.accuracy}
         return metrics, "val_accuracy"
 
     def get_metrics_finetune(model):
+        """ get metrics for finetuning """
         return "accuracy", "val_accuracy"
     
     if is_tl or is_distil:

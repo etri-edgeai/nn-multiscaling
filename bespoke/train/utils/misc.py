@@ -6,6 +6,7 @@ from tensorflow.keras import backend
 import tensorflow as tf
 
 class BespokeTaskLoss(losses.Loss):
+    """ BespokeLoss for transfer learning """
 
     def __init__(self, label_smoothing=0.1):
         super(BespokeTaskLoss, self).__init__()
@@ -13,6 +14,7 @@ class BespokeTaskLoss(losses.Loss):
         self.label_smoothing = label_smoothing
 
     def call(self, y_true, y_pred):
+        """ Call function """
         if self.mute:
             return 0.0 * losses.categorical_crossentropy(y_true, y_pred)
         else:

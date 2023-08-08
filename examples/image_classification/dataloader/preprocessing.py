@@ -284,6 +284,7 @@ def preprocess_for_predict(
     num_channels: int = 3,
     dtype: tf.dtypes.DType = tf.float32
 ) -> tf.Tensor:
+  """ preprocess for predict """
   images = tf.reshape(images, [image_size, image_size, num_channels])
   if dtype is not None:
     images = tf.image.convert_image_dtype(images, dtype=dtype)
@@ -464,6 +465,7 @@ def _crop(image, offset_height, offset_width, crop_height, crop_width):
   return tf.reshape(image, cropped_shape)
 
 def center_crop_and_resize(image, image_size, crop_padding=32, interpolation='bicubic'):
+    """ center crop and resize """
     shape = tf.shape(image)
     h = shape[0]
     w = shape[1]

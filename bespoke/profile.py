@@ -346,7 +346,9 @@ def run():
             except ValueError as e:
                 print(e)
                 tflite = 100000000000.0
-            except Exception as e:
+            except TypeError as e:
+                tflite = 100000000000.0
+            except NotImplementedError as e:
                 tflite = 100000000000.0
 
         gpu = 0

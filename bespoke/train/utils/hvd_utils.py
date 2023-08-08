@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+""" hvd_util """
 
 # Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 #

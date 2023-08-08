@@ -1,3 +1,5 @@
+""" TensorFlow backend """
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -362,7 +364,7 @@ class TFParser(common.Parser):
                             print(target_shapes)
                             pruning_cnt -= 1
                             continue
-                        except Exception as e:
+                        except TypeError as e:
                             print("Extremely large! %d" % pruning_cnt)
                             print(target_shapes)
                             pruning_cnt -= 1
@@ -398,7 +400,8 @@ class TFParser(common.Parser):
             if target_shapes is not None and (subnet[0].output.shape[-1] > target_shapes[1][-1] or
                 subnet[0].input.shape[-1] > target_shapes[0][-1]):
 
-                print(subnet[0].output.shape[-1], subnet[0].input.shape[-1], target_shapes[0][-1], target_shapes[1][-1])
+                print(
+                    subnet[0].output.shape[-1], subnet[0].input.shape[-1], target_shapes[0][-1], target_shapes[1][-1])
                 subnet_parser = PruningNNParser(subnet[0], allow_input_pruning=True, gate_class=SimplePruningGate)
                 subnet_parser.parse()
                 groups, groups_top = subnet_parser.get_group_topology()
@@ -933,7 +936,7 @@ def extract(parser, origin_nodes, nodes, trank, return_gated_model=False):
         import traceback
         traceback.print_exc(file=sys.stdout)
         sys.exit()
-    except Exception as e:
+    except TypeError as e:
         import sys
         import traceback
         traceback.print_exc(file=sys.stdout)
@@ -1232,7 +1235,7 @@ def prune(net, scale, namespace, custom_objects=None, ret_model=False, init=Fals
     except ValueError as e:
         print(e)
         return False
-    except Exception as e:
+    except TypeError as e:
         return False
 
     print(gated_model.count_params(), cutmodel.count_params())
@@ -1437,7 +1440,7 @@ def prune_with_sampling(
     except ValueError as e:
         print(e)
         return False
-    except Exception as e:
+    except TypeError as e:
         return False
 
     print(gated_model.count_params(), cutmodel.count_params())
@@ -1474,7 +1477,7 @@ def load_model_from_node(load_dir, id_, custom_objects=None):
 
     """
     path = os.path.join(load_dir, id_+".h5")
-    load_model(path, custom_objects)
+    return load_model(path, custom_objects)
 
 def load_model(filepath, custom_objects=None):
     """ PruningGate-aware model load
