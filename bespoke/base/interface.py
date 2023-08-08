@@ -467,29 +467,3 @@ class ModelHouse(object):
     def remove(self, node):
         """ Remove node """
         self._nodes.remove(node)
-
-
-def test():
-
-    from tensorflow import keras
-    import tensorflow as tf
-    import numpy as np
-
-    from tensorflow.keras.datasets import cifar10
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
-    model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=(32,32,3), classes=100)
-
-    tf.keras.utils.plot_model(model, to_file="original.png", show_shapes=True)
-
-    mh = ModelHouse(model)
-
-    # random data test
-    data = np.random.rand(1,32,32,3)
-    house = mh.make_train_model()[0]
-
-    tf.keras.utils.plot_model(house, to_file="house.pdf", show_shapes=True)
-    y = house(data)
-
-if __name__ == "__main__":
-    test()

@@ -14,7 +14,7 @@ import tensorflow as tf
 import numpy as np
 
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+from nncompress.backend.tensorflow_.transformation.pruning_parser import \
     PruningNNParser, StopGradientLayer, has_intersection
 from efficientnet.tfkeras import EfficientNetB0, EfficientNetB2
 

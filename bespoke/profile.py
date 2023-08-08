@@ -49,7 +49,7 @@ import onnxruntime as rt
 from bespoke.base.interface import ModelHouse
 from bespoke.base.engine import module_load
 from nncompress.backend.tensorflow_ import SimplePruningGate
-from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+from nncompress.backend.tensorflow_.transformation.pruning_parser import \
     PruningNNParser, StopGradientLayer, has_intersection
 
 BATCH_SIZE_GPU = 1

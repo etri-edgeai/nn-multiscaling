@@ -159,7 +159,7 @@ def transfer_learning(
                     targets.append(trainable_nodes[i])
                     targets[-1].wakeup()
 
-            except Exception as e:
+            except MemoryError as e:
                 print(e)
                 print("Memory Problem Occurs %d" % cnt)
                 print(tf.config.experimental.get_memory_info("GPU:0"))
@@ -170,6 +170,19 @@ def transfer_learning(
                         t.sleep()
                 cnt -= 1
                 continue
+
+            except RuntimeError as e:
+                print(e)
+                print("Memory Problem Occurs %d" % cnt)
+                print(tf.config.experimental.get_memory_info("GPU:0"))
+                import gc
+                gc.collect()
+                for t in targets:
+                    if not t.net.is_sleeping():
+                        t.sleep()
+                cnt -= 1
+                continue
+
 
             try:
                 house, output_idx, output_map = mh.make_train_model(targets, scale=1.0)

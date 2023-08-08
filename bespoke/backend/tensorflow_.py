@@ -16,7 +16,7 @@ import tensorflow as tf
 import numpy as np
 from keras_flops import get_flops
 
-from nncompress.backend.tensorflow_.transformation.pruning_parser import\
+from nncompress.backend.tensorflow_.transformation.pruning_parser import \
     PruningNNParser, StopGradientLayer, has_intersection
 from nncompress.backend.tensorflow_ import SimplePruningGate
 from nncompress.backend.tensorflow_.transformation import parse, inject, unfold
