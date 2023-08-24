@@ -50,19 +50,23 @@ def run():
     """
 
     parser = argparse.ArgumentParser(description='Bespoke runner', add_help=False)
-    parser.add_argument('--config', type=str) # dataset-sensitive configuration
-    parser.add_argument('--mode', type=str, default="test", help='model')
-    parser.add_argument('--source_dir', type=str, default=None, help='model')
-    parser.add_argument('--target_dir', type=str, default=None, help='model')
-    parser.add_argument('--model_name', type=str, default="model name for calling a handler", help='model')
-    parser.add_argument('--model_path', type=str, default=None, help='model')
-    parser.add_argument('--postfix', type=str, default="", help='model')
-    parser.add_argument('--base_value', type=float, default=0, help='model')
-    parser.add_argument('--obj_ratio', type=float, default=0.5, help='model')
-    parser.add_argument('--lda', type=float, default=0.1, help='model')
-    parser.add_argument('--alter_ratio', type=float, default=1.0, help='model')
-    parser.add_argument('--metric', type=str, default="flops", help='model')
-    parser.add_argument('--teacher_path', type=str, default=None, help='model')
+    parser.add_argument('--config', type=str, help="configruation file") # dataset-sensitive configuration
+    parser.add_argument('--mode', type=str, default="test", help=\
+        'mode (finetune | test | build | approx | profile | query | transfer_learning)')
+    parser.add_argument('--source_dir', type=str, default=None, help='a working directory')
+    parser.add_argument('--target_dir', type=str, default=None, help='a result directory')
+    parser.add_argument('--model_path', type=str, default=None, help='a path to the tf/keras model')
+    parser.add_argument('--postfix', type=str, default="", help=\
+        'a postfix for a produced file name (finetuning, querying)')
+    parser.add_argument('--base_value', type=float, default=0, help=\
+        'the value of the original model in terms of `metric`')
+    parser.add_argument('--obj_ratio', type=float, default=0.5, help=\
+        'targe compression ratio w.r.t `base_value`')
+    parser.add_argument('--lda', type=float, default=0.1, help='lambda')
+    parser.add_argument('--alter_ratio', type=float, default=1.0, help=\
+        'the ratio for the alternative set usage. 1.0 is recommended.')
+    parser.add_argument('--metric', type=str, default="flops", help='target metric')
+    parser.add_argument('--teacher_path', type=str, default=None, help='a path to the teacher model')
     parser.add_argument('--overwrite', action='store_true')
     overriding_params = [
         ("sampling_ratio", float),
@@ -72,7 +76,6 @@ def run():
         ("params_limit", float),
         ("step_ratio", float),
         ("astep_ratio", float),
-        ("batch_size_limit", int),
         ("num_partitions", int),
         ("num_imported_submodels", int),
         ("num_submodels_per_bunch", int),

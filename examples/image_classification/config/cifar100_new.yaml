@@ -1,6 +1,6 @@
-dataset: "cifar100"
-num_classes: 100
-models:
+# Bespoke parameters
+taskbuilder: "basic_classification.py"
+models: # pretrained models for computing alternatives
   - ResNet50V2
   - InceptionResNetV2
   - MobileNetV2
@@ -10,32 +10,30 @@ models:
   - EfficientNetV2S
   - ResNetRS101
   - ResNetRS152
-
-lr: 0.001
 sampling_ratio: 1.0
 dloss_scale: 0.5
-#memory_limit: 405168896
 memory_limit: 0
 params_limit: 0
 step_ratio: 0.3 # ste
 astep_ratio: 0.1 # ste
-batch_size_limit: 32 # for profiling
 num_partitions: 50
 num_imported_submodels: 50
 num_approx: 50
 num_submodels_per_bunch: 100
 num_samples_for_profiling: 5
-num_epochs: 1
+num_epochs: 5
 pruning_exit: false
 use_last_types: false
-taskbuilder: "basic_classification.py"
-width: 260
 batch_size: 32
-augment: True
-n_classes: 100
-sampling_ratio: 1.0
 
-use_amp: true
+# task-specific parameter
+dataset: "cifar100"
+n_classes: 100 # num_classees
+width: 260
+augment: True
+
+# training parameters (Refer to https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow2/Classification/ConvNets/config/defaults.py)
+use_amp: false
 lr_name: "exponential"
 initial_lr: 0.02
 t_mul: 2.0
