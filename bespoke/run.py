@@ -70,7 +70,6 @@ def run():
     parser.add_argument('--overwrite', action='store_true')
     overriding_params = [
         ("sampling_ratio", float),
-        ("lr", float),
         ("dloss_scale", float),
         ("memory_limit", float),
         ("params_limit", float),
