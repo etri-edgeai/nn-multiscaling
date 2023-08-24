@@ -45,7 +45,7 @@ from bespoke import backend as B
 from bespoke.base.engine import module_load, transfer_learning, build, approximate, finetune, cut, query
 
 def run():
-    """ Run fuction
+    """ Runner
 
     """
 
@@ -95,6 +95,8 @@ def run():
         if os.path.exists(args.target_dir) and not args.overwrite:
             print("%s is already exists." % args.target_dir)
             sys.exit(1)
+        elif args.mode == "profile":
+            pass
         else:
             if os.path.exists(args.target_dir):
                 shutil.rmtree(args.target_dir)
@@ -229,6 +231,8 @@ def run():
         mh.save(args.target_dir)
 
     elif args.mode == "test": # Test
+        if type(model.output) == list and len(model.output) > 1:
+            model = tf.keras.Model(model.input, model.output[0])
         model = taskbuilder.prep(model)
         test_data_gen = taskbuilder.load_dataset(split="test")
         taskbuilder.compile(model)

@@ -54,7 +54,7 @@ def train(
     model.compile(
         optimizer=optimizer, loss=loss, metrics=metrics, run_eagerly=False, experimental_run_tf_function=False)
 
-    if save_dir is not None and hvd.local_rank() == 0:
+    if save_dir is not None and hvd.local_rank() == 0 and not is_tl:
         model_name_ = '%s.best.h5' % prefix
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
@@ -214,7 +214,7 @@ def default_get_metrics_gen(config, is_tl=False, is_distil=False):
     def get_metrics(model):
         """ get metrics """
         metrics={model.output[0].name.split("/")[0]:misc.accuracy}
-        return metrics, "val_accuracy"
+        return metrics, "val_dense_accuracy"
 
     def get_metrics_finetune(model):
         """ get metrics for finetuning """

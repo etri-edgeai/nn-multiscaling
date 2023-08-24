@@ -374,8 +374,6 @@ def finetune(model_path, taskbuilder, postfix="", teacher_path=None, running_tim
         finetune_time_t2 = time.time()
         if running_time is not None:
             running_time["finetune_time"].append(finetune_time_t2 - finetune_time_t1)
-            with open(os.path.join(target_dir, "running_time.log"), "w") as file_:
-                json.dump(running_time, file_)
 
 def cut(model_path, teacher_path, taskbuilder, source_dir, postfix=""):
     """ Get a nongated model from a gated model

@@ -24,6 +24,7 @@ from bespoke.base.engine import module_load
 parser = argparse.ArgumentParser(description='Bespoke profile', add_help=False)
 parser.add_argument('--config', type=str, required=True) # dataset-sensitive configuration
 parser.add_argument('--model_path', type=str, required=True, help='model')
+parser.add_argument('--metric', type=str, required=True, help='metric')
 
 args = parser.parse_args()
 
@@ -38,7 +39,9 @@ task_class = module_load(config["taskbuilder"])
 taskbuilder = task_class(config)
 
 model = taskbuilder.load_model(args.model_path)
+if type(model.output) == list and len(model.output) > 1:
+    model = tf.keras.Model(model.input, model.output[0])
 model = taskbuilder.prep(model, for_benchmark=True)
 
-print(measure(model, taskbuilder, mode="onnx_cpu"))
+print(measure(model, taskbuilder, mode=args.metric))
 print(model.count_params())

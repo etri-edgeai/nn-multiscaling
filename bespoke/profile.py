@@ -252,7 +252,7 @@ def run():
     parser.add_argument('--notflite', action='store_true')
 
     args = parser.parse_args()
-    target_dir = args.target_dir
+    target_dir = args.source_dir
 
     with open(args.config, 'r') as stream:
         try:
