@@ -23,13 +23,6 @@ Run the script from the command line, providing the necessary arguments:
 python runner.py --config path/to/config.yaml --mode [mode] --source_dir path/to/source --target_dir path/to/target
 ```
 
-Available modes include:
-- `build`
-- `approx`
-- `finetune`
-- `query`
-- `transfer_learning`
-- `profile`
 
 ## Arguments
 
@@ -39,13 +32,6 @@ Available modes include:
 - `--target_dir`: Result directory path.
 - Additional arguments are available for specific operations.
 
-## Configuration
-
-The script is configured via a YAML file which includes parameters such as dataset paths, model architecture, training settings, etc.
-
-## Customization
-
-You can customize the runner script by adding new modes or modifying the existing workflow to suit different machine learning tasks.
 
 ## Contributing
 
