@@ -1,0 +1,60 @@
+dataset: "cifar10"
+num_classes: 10
+models:
+  - ResNet50V2
+  - InceptionResNetV2
+  - MobileNetV2
+  - MobileNet
+  - EfficientNetB1
+  - EfficientNetV2B1
+  - EfficientNetV2S
+  - ResNetRS101
+  - ResNetRS152
+
+lr: 0.001
+sampling_ratio: 1.0
+dloss_scale: 0.5
+#memory_limit: 405168896
+memory_limit: 0
+params_limit: 0
+step_ratio: 0.3 # ste
+astep_ratio: 0.1 # ste
+batch_size_limit: 32 # for profiling
+num_partitions: 50
+num_imported_submodels: 50
+num_approx: 50
+num_submodels_per_bunch: 100
+num_samples_for_profiling: 5
+num_epochs: 20
+pruning_exit: false
+use_last_types: false
+
+training_conf:
+  use_amp: true
+  lr_name: "exponential"
+  initial_lr: 0.02
+  t_mul: 2.0
+  m_mul: 1.0
+  alpha: 1.0e-7
+  decay_epochs: 10.0
+  decay_rate: 0.1
+  warmup_epochs: 0
+  opt_name: "adamb"
+  decay: 0.9
+  epsilon: 1.0e-6
+  lookahead: 0
+  momentum: 0.9
+  moving_average_decay: 0.999
+  weight_decay: 0.001
+  nesterov: false
+  beta_1: 0.9 
+  beta_2: 0.999
+  grad_clip_norm: 0
+  grad_accum_steps: 1
+  hvd_fp16_compression: true
+  intratrain_eval_using_ema: true
+  label_smoothing: 0.1   
+  cutmix_alpha: 0.0
+  mixup_alpha: 0.0
+  
+ 
