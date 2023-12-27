@@ -64,6 +64,7 @@ class WarmupDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     return lr
 
   def get_config(self) -> Mapping[str, Any]:
+    """ get_config """
     config = self._lr_schedule.get_config()
     config.update({
         "warmup_steps": self._warmup_steps,
@@ -122,6 +123,7 @@ class PiecewiseConstantDecayWithWarmup(
     return tf.cond(step < self._warmup_steps, warmup_lr, piecewise_lr)
 
   def get_config(self) -> Mapping[str, Any]:
+    """ get_config """
     return {
         "rescaled_lr": self._rescaled_lr,
         "step_boundaries": self._step_boundaries,

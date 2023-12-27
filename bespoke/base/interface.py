@@ -1,3 +1,7 @@
+""" ModelHouse Implementation
+
+"""
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -16,6 +20,9 @@ from nncompress.algorithms.solver.solver import State
 from nncompress.algorithms.solver.simulated_annealing import SimulatedAnnealingSolver
 
 class ModelState(State):
+    """ A state for executing the simulated annealing solver
+
+    """
 
     def __init__(self, selected_nodes, nodes, parser, metric):
         self.selected_nodes = selected_nodes
@@ -63,6 +70,7 @@ class ModelState(State):
 
 
 def score_f(obj_value, base_value, metric, lda, nodes):
+    """ Score function """
     approx_value = base_value
     score = None
     sum_mse = 0
@@ -107,19 +115,43 @@ class ModelHouse(object):
         self._sample_inputs = None
         self._sample_outputs = None
 
-    def build_base(self, model_list=None, min_num=20, memory_limit=None, params_limit=None, step_ratio=0.1):
+    def build_base(
+        self,
+        model_list=None,
+        min_num=20,
+        memory_limit=None,
+        params_limit=None,
+        step_ratio=0.1,
+        use_last_types=False):
+        """ Build Base """
+        if model_list is not None and len(model_list) == 0:
+            return
+
         nodes_ = []
         gen_ = PretrainedModelGenerator(self._namespace, model_list=model_list)
         while len(nodes_) < min_num:
             print(len(nodes_))
             n = np.random.choice(self._nodes)
-            n.wakeup()
-            _, parser = B.preprocess(n.net.model, set(), self._custom_objects) # dummy namespace
-            last_types = parser.get_last_types()
-            n.sleep()
-            alters = gen_.generate(
-                n.net, last_types, memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
-            #    n.net, n.pos[1][0], memory_limit=memory_limit, params_limit=params_limit, step_ratio=step_ratio, use_adapter=True)
+            if use_last_types:
+                n.wakeup()
+                _, parser = B.preprocess(n.net.model, set(), self._custom_objects) # dummy namespace
+                last_types = parser.get_last_types()
+                n.sleep()
+                alters = gen_.generate(
+                    n.net,
+                    last_types,
+                    memory_limit=memory_limit,
+                    params_limit=params_limit,
+                    step_ratio=step_ratio,
+                    use_adapter=True)
+            else:
+                alters = gen_.generate(
+                    n.net,
+                    n.pos[1][0],
+                    memory_limit=memory_limit,
+                    params_limit=params_limit,
+                    step_ratio=step_ratio,
+                    use_adapter=True)
             for idx, (a, model_name) in enumerate(alters): 
                 na = Node(self._parser.get_id("anode"), "alter_"+model_name, a, pos=n.pos)
                 na.origin = n
@@ -127,7 +159,15 @@ class ModelHouse(object):
                 na.sleep()
         self._nodes.extend(nodes_)
 
-    def build_approx(self, min_num=20, memory_limit=None, params_limit=None, init=False, pruning_exit=False, data=None):
+    def build_approx(
+        self,
+        min_num=20,
+        memory_limit=None,
+        params_limit=None,
+        init=False,
+        pruning_exit=False,
+        data=None):
+        """ Build Approximation """
         if data is not None:
             self.build_sample_data(data)
 
@@ -139,7 +179,13 @@ class ModelHouse(object):
             tag = "app_origin" if n.tag == "origin" else "app_alter"
             scale = np.random.choice([0.05, 0.075, 0.1, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75])
             sample_data = self._sample_inputs[n.pos[0]]
-            alters = gen_.generate(n.net, [scale], sample_data=sample_data, custom_objects=self._custom_objects, init=init, pruning_exit=pruning_exit)
+            alters = gen_.generate(
+                n.net,
+                [scale],
+                sample_data=sample_data,
+                custom_objects=self._custom_objects,
+                init=init,
+                pruning_exit=pruning_exit)
 
             if not alters:
                 continue
@@ -150,12 +196,69 @@ class ModelHouse(object):
         self._nodes.extend(nodes_)
 
     def get_node(self, id_):
+        """ Get node by id_ """
         for n in self._nodes:
             if n.id_ == id_:
                 return n
         return None
 
-    def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+    def select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0, use_random=False):
+        """ Select function """
+
+        if use_random:
+            print("RANDOM SELECTION")
+            return self._rand_select(spec, return_gated_model, lda, ratio)
+        else:
+            return self._select(spec, return_gated_model, lda, ratio)
+
+
+    def _rand_select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+        """ Private random """
+        metric, obj_value, base_value = spec
+        approx_value = base_value
+       
+        COUNT = 10000
+        nodes = [n for n in self._nodes if n.is_original()]
+        import random
+        minimal = []
+        for i in range(COUNT):
+            random.shuffle(nodes)
+            node = nodes[0]
+
+            anodes = []
+            for node_ in self._nodes:
+                if not node_.is_original():
+                    on = node_.origin
+                    while on.origin != None:
+                        on = on.origin
+
+                    if node == on:
+                        anodes.append(node_)
+            
+            random.shuffle(anodes)
+
+            for a in anodes:
+
+                compatible = True
+                for m in minimal:
+                    if not self._parser.is_compatible(a, m):
+                        compatible = False
+                        break
+                if not compatible:
+                    break
+
+                if a not in minimal:
+                    minimal.append(a)
+                    break
+
+        for m in minimal:
+            print(m.id_, m.tag, m.pos)
+
+        ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
+        return ret
+
+    def _select(self, spec, return_gated_model=False, lda=0.1, ratio=1.0):
+        """ SA selection """
         minimal = []
         nodes = [n for n in self._nodes]
         import random
@@ -196,9 +299,11 @@ class ModelHouse(object):
                         score = max(approx_value / obj_value, 1.0)
                     else:
                         if metric != "igpu":
-                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max((approx_value - on._profile[metric] + n._profile[metric]) / obj_value, 1.0) +\
+                                (on._profile["iacc"] - n._profile["iacc"]) * lda
                         else:
-                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"] - n._profile["iacc"]) * lda
+                            score = max((approx_value - n._profile[metric]) / obj_value, 1.0) + (on._profile["iacc"]
+                                - n._profile["iacc"]) * lda
 
                     if min_== -1 or min_ > score:
                         min_ = score
@@ -230,8 +335,10 @@ class ModelHouse(object):
         ret = self._parser.extract(self.origin_nodes, minimal, return_gated_model=return_gated_model)
         return ret
 
+
     @property
     def origin_nodes(self):
+        """ Origin nodes """
         ret = {}
         for n in self._nodes:
             if n.is_original():
@@ -240,18 +347,22 @@ class ModelHouse(object):
 
     @property
     def model(self):
+        """ Getter for model """
         return self._model
 
     @property
     def parser(self):
+        """ Getter for parser """
         return self._parser
 
     @property
     def nodes(self):
+        """ Getter for nodes """
         return self._nodes
 
     @property
     def trainable_nodes(self):
+        """ Get trainable nodes """
         nodes = []
         for n in self._nodes:
             if not n.is_original():
@@ -259,22 +370,25 @@ class ModelHouse(object):
         return nodes
 
     def extend(self, nodes):
+        """ Extends node set """
         self._nodes += nodes
 
     def build_sample_data(self, data):
+        """ Build sample data for profiling """
         self._sample_inputs = {}
         self._sample_outputs = {}
         for n in self._nodes:
             if n.is_original():
-                print(n.id_)
                 ret = B.build_samples(self._model, data, n.pos)
                 self._sample_inputs[n.pos[0]] = [ret_[0] for ret_ in ret]
                 self._sample_outputs[n.pos[1]] = [ret_[1] for ret_ in ret]
 
     def make_train_model(self, nodes, scale=0.1):
+        """ Prepare a model for training """
         return B.make_train_model(self._model, nodes, scale=scale)
 
     def profile(self):
+        """ Base Profile """
         if self._sample_inputs is None:
             raise ValueError("build_sample_data should've been called before profiling.")
 
@@ -282,6 +396,7 @@ class ModelHouse(object):
             n.profile(self._sample_inputs[n.pos[0]], self._sample_outputs[n.pos[1]])
 
     def _get_predefined_paths(self, dir_):
+        """ Get some predefined paths """
         subnet_dir_path = os.path.join(dir_, "nets")
         nodes_path = os.path.join(dir_, "nodes.json")
         namespace_path = os.path.join(dir_, "namespace.pkl")
@@ -291,6 +406,7 @@ class ModelHouse(object):
             namespace_path
 
     def save(self, save_dir):
+        """ Save model house """
        
         if os.path.exists(save_dir):
             print("%s exists." % save_dir)
@@ -321,6 +437,7 @@ class ModelHouse(object):
             pickle.dump(self._namespace, f)
 
     def load(self, load_dir):
+        """ Load from a directory """
         subnet_dir, nodes_path, namespace_path = self._get_predefined_paths(load_dir)
         with open(nodes_path, "r") as f:
             serialized = json.load(f)
@@ -332,7 +449,6 @@ class ModelHouse(object):
                 node_dict[key] = self._nodes[-1]
                 
             for key, node_s in serialized.items():
-                print(key)
                 node_dict[key].load(node_s, node_dict, self._custom_objects) 
 
         model_path = B.get_basemodel_path(load_dir)
@@ -345,41 +461,9 @@ class ModelHouse(object):
         print("load!")
 
     def add(self, node):
+        """ Add node """
         self._nodes.append(node)
 
     def remove(self, node):
+        """ Remove node """
         self._nodes.remove(node)
-
-
-def test():
-
-    from tensorflow import keras
-    import tensorflow as tf
-    import numpy as np
-
-    from tensorflow.keras.datasets import cifar10
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
-    model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=(32,32,3), classes=100)
-
-    tf.keras.utils.plot_model(model, to_file="original.png", show_shapes=True)
-
-    mh = ModelHouse(model)
-
-    # random data test
-    data = np.random.rand(1,32,32,3)
-    house = mh.make_train_model()[0]
-
-    tf.keras.utils.plot_model(house, to_file="house.pdf", show_shapes=True)
-    y = house(data)
-
-
-
-
-
-
-   
-
-
-if __name__ == "__main__":
-    test()

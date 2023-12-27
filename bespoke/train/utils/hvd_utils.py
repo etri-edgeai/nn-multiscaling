@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+""" hvd_util """
 
 # Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 #
@@ -22,4 +23,5 @@ __all__ = [
 ]
 
 def is_using_hvd():
+    """ Determine whether hvd is used or not """
     return hvd.size() > 1
