@@ -26,7 +26,7 @@ from tensorflow import keras
 from tensorflow_addons.optimizers import MovingAverage
 # pylint: disable=protected-access
 
-from utils import learning_rate
+from bespoke.train.utils import learning_rate
 
 
 def fetch_optimizer(model,opt_type) -> tf.keras.optimizers.Optimizer:
@@ -102,6 +102,7 @@ class GradientAccumulator(object):
               gradient.assign(gradient*tf.cast(1/self._accum_steps, gradient.dtype))
               
   def _get_replica_gradients(self):
+      """ get_replica """
       if tf.distribute.has_strategy():
           # In a replica context, we want to accumulate gradients on each replica
           # without synchronization, so we directly assign the value of the
@@ -121,6 +122,7 @@ class GradientAccumulator(object):
 
 
 class HvdMovingAverage(MovingAverage):
+  """ HvdMovingAverage """
     
   def swap_weights(self):
     """Swap the average and moving weights. 
@@ -147,6 +149,7 @@ class HvdMovingAverage(MovingAverage):
 
         
   def apply_gradients(self, grads_and_vars, name=None, experimental_aggregate_gradients=True):
+      """ apply gradients"""
       self._optimizer._iterations = self.iterations
       result = super().apply_gradients(grads_and_vars, name)
       # update EMA weights after the weights are updated
@@ -193,6 +196,7 @@ class HvdMovingAverage(MovingAverage):
 
   @tf.function
   def update_average(self, step: tf.Tensor):
+    """ update_average """
     step = tf.cast(step, tf.float32)
     average_decay = self._get_hyper("average_decay", tf.dtypes.float32)
     if step < self._start_step:
@@ -220,6 +224,7 @@ class HvdMovingAverage(MovingAverage):
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
+    """ from_config """
     optimizer = tf.keras.optimizers.deserialize(
         config.pop('optimizer'),
         custom_objects=custom_objects,

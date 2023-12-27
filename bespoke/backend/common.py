@@ -1,8 +1,18 @@
+""" Base Structure
+
+"""
+
 from abc import ABC, abstractmethod
 
 class Parser(ABC):
+    """ Base Parser for a model
+
+    """
 
     def __init__(self, model, namespace):
+        """ Init function
+
+        """
         self._model = model
         self._namespace = namespace
 
@@ -14,22 +24,34 @@ class Parser(ABC):
 
     @abstractmethod
     def get_id(self, prefix):
-        """
+        """ Get identifier for a prefix
 
         """
 
 
 class Net(ABC):
+    """ Wrapper for a model
+
+    """
 
     def __init__(self, model):
+        """ Init function
+
+        """
         self._model = model
 
     @property
     def model(self):
+        """ Getter for model
+
+        """
         return self._model
 
     @model.setter
     def model(self, model):
+        """ Setter for model
+
+        """
         self._model = model
 
     @abstractmethod

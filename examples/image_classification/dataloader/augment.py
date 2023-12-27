@@ -139,7 +139,7 @@ def _convert_angles_to_transform(
 
   """
   angles = tf.convert_to_tensor(angles, dtype=tf.float32)
-  if len(angles.get_shape()) == 0:  # pylint:disable=g-explicit-length-test
+  if len(angles.get_shape()) == 0:
     angles = angles[None]
   elif len(angles.get_shape()) != 1:
     raise TypeError('Angles should have a rank 0 or 1.')
@@ -320,6 +320,7 @@ def cutout(image: tf.Tensor, pad_size: int, replace: int = 0) -> tf.Tensor:
 
 
 def solarize(image: tf.Tensor, threshold: int = 128) -> tf.Tensor:
+  """ solarize """
   # For each pixel in the image, select the pixel
   # if the value is less than the threshold.
   # Otherwise, subtract 255 from the pixel.
@@ -329,6 +330,7 @@ def solarize(image: tf.Tensor, threshold: int = 128) -> tf.Tensor:
 def solarize_add(image: tf.Tensor,
                  addition: int = 0,
                  threshold: int = 128) -> tf.Tensor:
+  """ solarize add """
   # For each pixel in the image less than threshold
   # we add 'addition' amount to it and then clip the
   # pixel value to be between 0 and 255. The value
@@ -434,6 +436,7 @@ def autocontrast(image: tf.Tensor) -> tf.Tensor:
 
     # Scale the image, making the lowest value 0 and the highest value 255.
     def scale_values(im):
+      """ scale values """
       scale = 255.0 / (hi - lo)
       offset = -lo * scale
       im = tf.cast(im, tf.float32) * scale + offset
@@ -495,6 +498,7 @@ def equalize(image: tf.Tensor) -> tf.Tensor:
     step = (tf.reduce_sum(nonzero_histo) - nonzero_histo[-1]) // 255
 
     def build_lut(histo, step):
+      """ build lut """
       # Compute the cumulative sum, shifting by step // 2
       # and then normalization by step.
       lut = (tf.cumsum(histo) + (step // 2)) // step
@@ -581,6 +585,7 @@ def _randomly_negate_tensor(tensor):
 
 
 def _rotate_level_to_arg(level: float):
+  """ rotate level to arg """
   level = (level/_MAX_LEVEL) * 30.
   level = _randomly_negate_tensor(level)
   return (level,)
@@ -596,10 +601,12 @@ def _shrink_level_to_arg(level: float):
 
 
 def _enhance_level_to_arg(level: float):
+  """ enhance level to arg """
   return ((level/_MAX_LEVEL) * 1.8 + 0.1,)
 
 
 def _shear_level_to_arg(level: float):
+  """ shear level to arg """
   level = (level/_MAX_LEVEL) * 0.3
   # Flip level to negative with 50% chance.
   level = _randomly_negate_tensor(level)
@@ -607,6 +614,7 @@ def _shear_level_to_arg(level: float):
 
 
 def _translate_level_to_arg(level: float, translate_const: float):
+  """ translate level to arg """
   level = (level/_MAX_LEVEL) * float(translate_const)
   # Flip level to negative with 50% chance.
   level = _randomly_negate_tensor(level)
@@ -614,6 +622,7 @@ def _translate_level_to_arg(level: float, translate_const: float):
 
 
 def _mult_to_arg(level: float, multiplier: float = 1.):
+  """ mul to arg """
   return (int((level / _MAX_LEVEL) * multiplier),)
 
 
@@ -986,10 +995,8 @@ class RandAugment(ImageAugment):
                                            self.translate_const)
         branch_fns.append((
             i,
-            # pylint:disable=g-long-lambda
             lambda selected_func=func, selected_args=args: selected_func(
                 image, *selected_args)))
-        # pylint:enable=g-long-lambda
 
       image = tf.switch_case(branch_index=op_to_select,
                              branch_fns=branch_fns,

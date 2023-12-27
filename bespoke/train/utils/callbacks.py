@@ -27,7 +27,7 @@ import time
 
 from typing import Any, List, MutableMapping, Text
 from tensorflow import keras
-from utils import optimizer_factory
+from bespoke.train.utils import optimizer_factory
 
 
 def get_callbacks(model_checkpoint: bool = True,
@@ -125,6 +125,7 @@ class CustomTensorBoard(tf.keras.callbacks.TensorBoard):
                track_lr: bool = False,
                initial_step: int = 0,
                **kwargs):
+    """ Init function """
     super(CustomTensorBoard, self).__init__(log_dir=log_dir, **kwargs)
     self.step = initial_step
     self._track_lr = track_lr
@@ -132,6 +133,7 @@ class CustomTensorBoard(tf.keras.callbacks.TensorBoard):
   def on_batch_begin(self,
                      epoch: int,
                      logs: MutableMapping[str, Any] = None) -> None:
+    """ on_batch_begin """
     self.step += 1
     if logs is None:
       logs = {}
@@ -141,6 +143,7 @@ class CustomTensorBoard(tf.keras.callbacks.TensorBoard):
   def on_epoch_begin(self,
                      epoch: int,
                      logs: MutableMapping[str, Any] = None) -> None:
+    """ on_epoch_begin """
     if logs is None:
       logs = {}
     metrics = self._calculate_metrics()
@@ -150,6 +153,7 @@ class CustomTensorBoard(tf.keras.callbacks.TensorBoard):
   def on_epoch_end(self,
                    epoch: int,
                    logs: MutableMapping[str, Any] = None) -> None:
+    """ on_epoch_end """
     if logs is None:
       logs = {}
     metrics = self._calculate_metrics()
@@ -157,6 +161,7 @@ class CustomTensorBoard(tf.keras.callbacks.TensorBoard):
     super(CustomTensorBoard, self).on_epoch_end(epoch, logs)
 
   def _calculate_metrics(self) -> MutableMapping[str, Any]:
+    """ calculate metrics """
     logs = {}
     # TODO(b/149030439): disable LR reporting.
     if self._track_lr:
@@ -197,25 +202,30 @@ class MovingAverageCallback(tf.keras.callbacks.Callback):
                intratrain_eval_using_ema: bool = False,
                overwrite_weights_on_train_end: bool = False,
                **kwargs):
+    """ Init function """
     super(MovingAverageCallback, self).__init__(**kwargs)
     self.intratrain_eval_using_ema = intratrain_eval_using_ema
     self.overwrite_weights_on_train_end = overwrite_weights_on_train_end
     self.ema_opt = None
 
   def set_model(self, model: tf.keras.Model):
+    """ set_model """
     super(MovingAverageCallback, self).set_model(model)
     self.ema_opt = optimizer_factory.fetch_optimizer(model, optimizer_factory.MovingAverage)
     self.ema_opt.shadow_copy(model.weights)
 
   def on_test_begin(self, logs: MutableMapping[Text, Any] = None):
+    """ on_test_begin """
     if self.intratrain_eval_using_ema:
       self.ema_opt.swap_weights()
 
   def on_test_end(self, logs: MutableMapping[Text, Any] = None):
+    """ on_test_end """
     if self.intratrain_eval_using_ema:
       self.ema_opt.swap_weights()
 
   def on_train_end(self, logs: MutableMapping[Text, Any] = None):
+    """ on_train_end """
     if self.overwrite_weights_on_train_end:
       self.ema_opt.assign_average_vars(self.model.variables)
 
@@ -246,7 +256,7 @@ class AverageModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
       mode: str = 'auto',
       save_freq: str = 'epoch',
       **kwargs):
-
+    """ Init function """
     super().__init__(
         filepath,
         monitor,
@@ -260,10 +270,12 @@ class AverageModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
     self.ema_opt = None
 
   def set_model(self, model):
+    """ set model """
     self.ema_opt = optimizer_factory.fetch_optimizer(model, optimizer_factory.MovingAverage)
     return  super().set_model(model)
 
   def _save_model(self, epoch, batch, logs):
+    """ _save model """
     assert isinstance(self.ema_opt, optimizer_factory.MovingAverage)
 
     if self.update_weights:
@@ -284,6 +296,7 @@ class BatchTimestamp(object):
   """A structure to store batch time stamp."""
 
   def __init__(self, batch_index, timestamp):
+    """ Init function """
     self.batch_index = batch_index
     self.timestamp = timestamp
 
@@ -350,15 +363,18 @@ class TimeHistory(tf.keras.callbacks.Callback):
     return sum(self.throughput[ind:])/(len(self.throughput[ind:])) # removed +1 from denominator
 
   def on_train_end(self, logs=None):
+    """ on_train_end """
     self.train_finish_time = time.time()
 
     if self.summary_writer:
       self.summary_writer.flush()
 
   def on_epoch_begin(self, epoch, logs=None):
+    """ on_epoch_begin """
     self.epoch_start = time.time()
 
   def on_batch_begin(self, batch, logs=None):
+    """ on_batch_begin """
     # tf.print('+++++++++++',self.model.optimizer.iterations,batch)
     if not self.start_time:
       self.start_time = time.time()
@@ -380,7 +396,11 @@ class TimeHistory(tf.keras.callbacks.Callback):
 
       self.timestamp_log.append(BatchTimestamp(self.global_steps, now))
       elapsed_time_str='{:.2f} seconds'.format(elapsed_time)
-      self.logger.log(step='PARAMETER', data={'TimeHistory': elapsed_time_str, 'examples/second': examples_per_second, 'steps': (self.last_log_step, self.global_steps)})
+      self.logger.log(
+        step='PARAMETER',
+        data={'TimeHistory': elapsed_time_str,
+        'examples/second': examples_per_second,
+        'steps': (self.last_log_step, self.global_steps)})
 
       if self.summary_writer:
         with self.summary_writer.as_default():
@@ -398,6 +418,7 @@ class TimeHistory(tf.keras.callbacks.Callback):
       self.throughput.append(examples_per_second)
 
   def on_epoch_end(self, epoch, logs=None):
+    """ on_epoch_end """
     if epoch == 0:
       self.step_per_epoch = self.steps_in_epoch
     epoch_run_time = time.time() - self.epoch_start
@@ -439,11 +460,14 @@ class EvalTimeHistory(tf.keras.callbacks.Callback):
     return self.average_steps_per_second * self.batch_size
 
   def on_test_batch_end(self, batch, logs=None):
+    """ on_test_batch_end """
     self.global_steps += 1
     self.batch_time.append(time.time() - self.test_begin)
 
   def on_test_batch_begin(self, epoch, logs=None):
+    """ on_test_batch_begin """
     self.test_begin = time.time()
 
   def on_test_end(self, epoch, logs=None):
+    """ on_test_end """
     self.eval_time = sum(self.batch_time) - self.batch_time[0]
