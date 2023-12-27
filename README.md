@@ -1,6 +1,5 @@
-# Model Runner for Build, Approximation, Fine-tuning, and Querying
 
-This Python script acts as a runner for various model operations such as building, approximation, fine-tuning, and querying within a machine learning workflow.
+# NN-Multiscaling (With Bespoke)
 
 ## Features
 
@@ -51,3 +50,6 @@ You can customize the runner script by adding new modes or modifying the existin
 ## Contributing
 
 To contribute to the development of this runner script, you can extend its capabilities or improve the existing code to increase efficiency and performance.
+
+## Acknowledgement
+This work was supported by Institute of Information & communications Technology Planning & Evaluation (IITP) grant funded by the Korea government (MSIT) (No. 2021-0-00907, Development of Adaptive and Lightweight Edge-Collaborative Analysis Technology for Enabling Proactively Immediate Response and Rapid Learning).
